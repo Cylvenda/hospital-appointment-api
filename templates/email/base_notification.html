@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ title }}</title>
+    <style>
+      :root {
+        --primary: #4f46e5;
+        --primary-dark: #4338ca;
+        --primary-soft: #eef2ff;
+        --text: #1f2937;
+        --muted: #6b7280;
+        --border: #e5e7eb;
+        --surface: #ffffff;
+        --page: #f8fafc;
+      }
+
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--page);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+      }
+
+      .card {
+        max-width: 620px;
+        margin: 0 auto;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--surface);
+        overflow: hidden;
+      }
+
+      .header {
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+        color: #fff;
+        padding: 22px 28px;
+      }
+
+      .header h2 {
+        margin: 0;
+        font-size: 20px;
+      }
+
+      .content {
+        padding: 26px 28px;
+      }
+
+      .content h3 {
+        margin: 0 0 14px;
+      }
+
+      .content p {
+        margin: 0 0 14px;
+        line-height: 1.6;
+      }
+
+      .extra {
+        margin-top: 12px;
+        padding: 12px 14px;
+        border: 1px solid var(--border);
+        border-left: 4px solid var(--primary);
+        border-radius: 10px;
+        background: var(--primary-soft);
+      }
+
+      .footer {
+        border-top: 1px solid var(--border);
+        padding: 14px 28px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="header">
+        <h2>{{ app_name|default:"Patient Appointment" }}</h2>
+      </div>
+
+      <div class="content">
+        <h3>{{ title }}</h3>
+        <p>{{ message }}</p>
+
+        {% if extra_info %}
+        <div class="extra">{{ extra_info|safe }}</div>
+        {% endif %}
+      </div>
+
+      <div class="footer">
+        &copy; {{ year }} {{ app_name|default:"Patient Appointment" }}. All rights reserved.
+      </div>
+    </div>
+  </body>
+</html>

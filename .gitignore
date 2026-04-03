@@ -1,0 +1,24 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+
+# Local env
+.env
+.env.*
+
+# DB / uploads
+db.sqlite3
+*.sqlite3
+media/
+staticfiles/
+
+# Logs
+*.log
