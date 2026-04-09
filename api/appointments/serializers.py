@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from api.accounts.models import DoctorProfile
 from api.appointments.models import (
     IllnessCategory,
     Appointment,
@@ -14,25 +15,36 @@ class IllnessCategorySerializer(serializers.ModelSerializer):
 
 
 class AppointmentSerializer(serializers.ModelSerializer):
-    patient = serializers.StringRelatedField()
-    doctor = serializers.StringRelatedField()
-    illness_category = serializers.StringRelatedField(
-        source="category.name", read_only=True
-    )
+    patient_name = serializers.CharField(source="created_by.full_name", read_only=True)
+    patient_email = serializers.EmailField(source="created_by.email", read_only=True)
+    doctor_name = serializers.SerializerMethodField()
+    doctor_uuid = serializers.UUIDField(source="doctor.uuid", read_only=True)
+    payment_status = serializers.CharField(source="payment.status", read_only=True)
+    illness_category = serializers.CharField(source="category.name", read_only=True)
     illness_category_uuid = serializers.UUIDField(
         source="category.uuid", read_only=True
     )
+
+    def get_doctor_name(self, obj):
+        if not obj.doctor:
+            return None
+        return obj.doctor.user.full_name or str(obj.doctor)
 
     class Meta:
         model = Appointment
         fields = [
             "uuid",
-            "patient",
-            "doctor",
+            "patient_name",
+            "patient_email",
+            "doctor_name",
+            "doctor_uuid",
+            "payment_status",
             "illness_category",
             "illness_category_uuid",
             "description",
             "appointment_date",
+            "start_time",
+            "end_time",
             "status",
             "created_at",
         ]
@@ -56,12 +68,32 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
 
 
 class AppointmentAssignSerializer(serializers.ModelSerializer):
+    doctor_uuid = serializers.SlugRelatedField(
+        source="doctor",
+        slug_field="uuid",
+        queryset=DoctorProfile.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+
     class Meta:
         model = Appointment
-        fields = ["doctor", "appointment_date", "status"]
+        fields = [
+            "doctor_uuid",
+            "appointment_date",
+            "start_time",
+            "end_time",
+            "status",
+        ]
 
     def validate(self, attrs):
-        if attrs.get("status") not in ["approved", "rejected"]:
+        status = attrs.get("status")
+        if status and status not in [
+            Appointment.Status.PENDING,
+            Appointment.Status.ACCEPTED,
+            Appointment.Status.CANCELLED,
+            Appointment.Status.DECLINED,
+        ]:
             raise serializers.ValidationError("Invalid status")
         return attrs
 
@@ -111,3 +143,11 @@ class PaymentSerializer(serializers.ModelSerializer):
             "status",
             "transaction_reference",
         ]
+
+
+class DoctorOptionSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source="user.full_name", read_only=True)
+
+    class Meta:
+        model = DoctorProfile
+        fields = ["uuid", "name", "is_available"]

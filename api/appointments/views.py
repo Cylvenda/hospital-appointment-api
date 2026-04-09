@@ -5,12 +5,14 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, extend_schema_view
 import re
+from api.accounts.models import DoctorProfile
 from api.appointments.models import Appointment, IllnessCategory, Payment
 from api.appointments.serializers import (
     AppointmentSerializer,
     AppointmentCreateSerializer,
     AppointmentAssignSerializer,
     AppointmentDoctorUpdateSerializer,
+    DoctorOptionSerializer,
     IllnessCategorySerializer,
 )
 from api.notifications.services import create_and_send_notification
@@ -41,14 +43,7 @@ def _notify(
     )
 
 
-@extend_schema_view(
-    list=extend_schema(tags=["Appointments"]),
-    retrieve=extend_schema(tags=["Appointments"]),
-    create=extend_schema(tags=["Appointments"]),
-    update=extend_schema(tags=["Appointments"]),
-    partial_update=extend_schema(tags=["Appointments"]),
-    destroy=extend_schema(tags=["Appointments"]),
-)
+
 class AppointmentViewSet(viewsets.ModelViewSet):
     queryset = Appointment.objects.all()
     permission_classes = [IsAuthenticated]
@@ -63,7 +58,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             return AppointmentCreateSerializer
 
         if self.action in ["update", "partial_update"]:
-            if role == "receptionist":
+            if role in ["receptionist", "admin"]:
                 return AppointmentAssignSerializer
             if role == "doctor":
                 return AppointmentDoctorUpdateSerializer
@@ -84,6 +79,15 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             return Appointment.objects.all()
 
         return Appointment.objects.none()
+
+    @action(detail=False, methods=["get"], url_path="doctors")
+    def doctors(self, request):
+        if request.user.role not in ["admin", "receptionist"]:
+            raise PermissionDenied("You do not have permission to view doctors")
+
+        queryset = DoctorProfile.objects.select_related("user").filter(is_available=True)
+        serializer = DoctorOptionSerializer(queryset, many=True)
+        return Response(serializer.data)
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -114,7 +118,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             triggered_by=user,
         )
 
-    @extend_schema(tags=["Appointments"])
+
     @action(detail=True, methods=["post"])
     def pay(self, request, uuid=None):
         appointment = self.get_object()
@@ -151,7 +155,6 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             }
         )
 
-    @extend_schema(tags=["Appointments"])
     @action(detail=True, methods=["post"])
     def cancel(self, request, uuid=None):
         appointment = self.get_object()
@@ -189,6 +192,9 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         old = self.get_object()
         user = self.request.user
         role = user.role
+        old_status = old.status
+        old_doctor_id = old.doctor_id
+        old_appointment_date = old.appointment_date
 
         if role == "patient":
             if old.created_by != user:
@@ -199,13 +205,13 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         if role == "doctor" and getattr(old.doctor, "user", None) != user:
             raise PermissionDenied("Not assigned to this appointment")
 
-        if role == "receptionist" and old.payment.status != Payment.Status.COMPLETED:
+        if role in ["receptionist", "admin"] and old.payment.status != Payment.Status.COMPLETED:
             raise PermissionDenied("Cannot process unpaid appointment")
 
         updated = serializer.save()
 
-        if role == "receptionist":
-            if old.status != updated.status:
+        if role in ["receptionist", "admin"]:
+            if old_status != updated.status:
                 create_log(updated, user, f"Status -> {updated.status}")
                 _notify(
                     user=updated.created_by,
@@ -220,7 +226,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                     triggered_by=user,
                 )
 
-            if old.doctor != updated.doctor and updated.doctor:
+            if old_doctor_id != updated.doctor_id and updated.doctor:
                 create_log(updated, user, f"Doctor assigned -> {updated.doctor}")
                 _notify(
                     user=updated.doctor.user,
@@ -231,7 +237,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                     triggered_by=user,
                 )
 
-            if old.appointment_date != updated.appointment_date:
+            if old_appointment_date != updated.appointment_date:
                 create_log(updated, user, f"Scheduled -> {updated.appointment_date}")
                 _notify(
                     user=updated.created_by,
@@ -255,14 +261,6 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 )
 
 
-@extend_schema_view(
-    list=extend_schema(tags=["Illness Category"]),
-    retrieve=extend_schema(tags=["Illness Category"]),
-    create=extend_schema(tags=["Illness Category"]),
-    update=extend_schema(tags=["Illness Category"]),
-    partial_update=extend_schema(tags=["Illness Category"]),
-    destroy=extend_schema(tags=["Illness Category"]),
-)
 class IllnessCategoryViewSet(viewsets.ModelViewSet):
     queryset = IllnessCategory.objects.all()
     serializer_class = IllnessCategorySerializer

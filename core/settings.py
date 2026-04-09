@@ -255,8 +255,4 @@ SPECTACULAR_SETTINGS = {
         "email": "brayanmlawa0917@gmail.com",
     },
     "SERVE_INCLUDE_SCHEMA": False,
-    "TAGS": [
-        {"name": "Appointments", "description": "Manage appointments"},
-        {"name": "Auth", "description": "Authentication"},
-    ],
 }
