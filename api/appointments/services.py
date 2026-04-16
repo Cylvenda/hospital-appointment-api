@@ -4,6 +4,7 @@ from rest_framework.exceptions import ValidationError
 from .payments import BASE_URL, clickpesa_headers, PaymentGatewayError
 from .models import Payment
 from django.conf import settings
+import uuid
 
 
 def normalize_phone_number(raw_phone):
@@ -35,18 +36,26 @@ def normalize_phone_number(raw_phone):
         )
 
     if len(digits) != 12:
-        raise ValidationError({"phoneNumber": "Phone number must be 12 digits, e.g. 2557XXXXXXXX."})
+        raise ValidationError(
+            {"phoneNumber": "Phone number must be 12 digits, e.g. 2557XXXXXXXX."}
+        )
 
     return digits
 
 
-def initiate_payment(payment: Payment, user, appointment):
+def initiate_payment(payment: Payment, user, appointment, preffered_phone_number):
     """
     Initiates a ClickPesa payment for the given payment object.
     """
+    phone = preffered_phone_number or user.phone
+
+    if not phone:
+        raise ValueError("No phone number provided")
+
+    phone_number = normalize_phone_number(phone)
     url = f"{BASE_URL}/payments/initiate-ussd-push-request"
-    phone_number = normalize_phone_number(user.phone)
-    order_reference = f"PAYMENTFORID{appointment.id}"
+    phone_number = normalize_phone_number(phone)
+    order_reference = f"PAYID{appointment.id}UUID{uuid.uuid4().hex[:6].upper()}"
 
     payload = {
         "phoneNumber": phone_number,

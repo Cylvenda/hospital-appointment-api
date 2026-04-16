@@ -91,6 +91,7 @@ class AdminSettingsSerializer(serializers.Serializer):
     support_email = serializers.CharField()
     clinic_hours = serializers.CharField()
     default_time_slot = serializers.CharField()
+    appointment_fee = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0)
     secure_sessions = serializers.BooleanField()
     patient_confirmation_emails = serializers.BooleanField()
 

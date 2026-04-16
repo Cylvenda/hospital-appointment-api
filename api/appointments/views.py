@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from django.db.models import Q
 import re
 from api.accounts.models import DoctorProfile
 from api.appointments.models import Appointment, IllnessCategory, Payment
@@ -43,7 +44,6 @@ def _notify(
     )
 
 
-
 class AppointmentViewSet(viewsets.ModelViewSet):
     queryset = Appointment.objects.all()
     permission_classes = [IsAuthenticated]
@@ -70,13 +70,13 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         role = user.role
 
         if role == "patient":
-            return Appointment.objects.filter(created_by=user)
+            return Appointment.objects.filter(created_by=user).order_by("-created_at")
         if role == "doctor":
-            return Appointment.objects.filter(doctor__user=user)
+            return Appointment.objects.filter(doctor__user=user).order_by("-created_at")
         if role == "receptionist":
-            return Appointment.objects.filter(payment__status=Payment.Status.COMPLETED)
+            return Appointment.objects.all().order_by("-created_at")
         if role == "admin":
-            return Appointment.objects.all()
+            return Appointment.objects.all().order_by("-created_at")
 
         return Appointment.objects.none()
 
@@ -85,7 +85,11 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         if request.user.role not in ["admin", "receptionist"]:
             raise PermissionDenied("You do not have permission to view doctors")
 
-        queryset = DoctorProfile.objects.select_related("user").filter(is_available=True)
+        queryset = (
+            DoctorProfile.objects.select_related("user")
+            .filter(is_available=True)
+            .order_by("-created_at")
+        )
         serializer = DoctorOptionSerializer(queryset, many=True)
         return Response(serializer.data)
 
@@ -118,11 +122,11 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             triggered_by=user,
         )
 
-
     @action(detail=True, methods=["post"])
     def pay(self, request, uuid=None):
         appointment = self.get_object()
         user = request.user
+        preffered_phone_number = request.data.get("phone")
 
         if user != appointment.created_by:
             raise PermissionDenied("You can only pay your own appointment")
@@ -131,7 +135,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         if payment.status == Payment.Status.COMPLETED:
             return Response({"message": "Already paid"})
 
-        response = initiate_payment(payment, user, appointment)
+        response = initiate_payment(payment, user, appointment, preffered_phone_number)
 
         create_log(
             appointment=appointment,
@@ -164,7 +168,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("You can only cancel your appointment")
 
         appointment.status = Appointment.Status.CANCELLED
-        appointment.save(update_fields=["status", "updated_at"])
+        appointment.save(update_fields=["status", "upda ted_at"])
 
         create_log(appointment, user, "Appointment cancelled by patient")
         _notify(
@@ -199,13 +203,16 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         if role == "patient":
             if old.created_by != user:
                 raise PermissionDenied("Not your appointment")
-            if old.payment.status == Payment.Status.COMPLETED:
-                raise PermissionDenied("Cannot update after payment")
+            # if old.payment.status == Appointment.Status.COMPLETED:
+            #     raise PermissionDenied("Cannot update after appointment is being completed")
 
         if role == "doctor" and getattr(old.doctor, "user", None) != user:
             raise PermissionDenied("Not assigned to this appointment")
 
-        if role in ["receptionist", "admin"] and old.payment.status != Payment.Status.COMPLETED:
+        if (
+            role in ["receptionist", "admin"]
+            and old.payment.status != Payment.Status.COMPLETED
+        ):
             raise PermissionDenied("Cannot process unpaid appointment")
 
         updated = serializer.save()
@@ -319,7 +326,9 @@ def clickpesa_webhook(request):
         if event in {"PAYMENT RECEIVED", "COMPLETED", "SUCCESS"}:
             if payment.status != Payment.Status.COMPLETED:
                 payment.status = Payment.Status.COMPLETED
-                payment.payment_method = event_data.get("channel") or payment.payment_method
+                payment.payment_method = (
+                    event_data.get("channel") or payment.payment_method
+                )
                 payment.save(update_fields=["status", "payment_method", "updated_at"])
                 create_log(appointment, None, f"Payment completed ({order_ref})")
                 _notify(
@@ -334,7 +343,9 @@ def clickpesa_webhook(request):
         elif event in {"PAYMENT FAILED", "FAILED"}:
             if payment.status != Payment.Status.FAILED:
                 payment.status = Payment.Status.FAILED
-                payment.payment_method = event_data.get("channel") or payment.payment_method
+                payment.payment_method = (
+                    event_data.get("channel") or payment.payment_method
+                )
                 payment.save(update_fields=["status", "payment_method", "updated_at"])
                 detail = f": {gateway_message}" if gateway_message else ""
                 create_log(appointment, None, f"Payment failed ({order_ref}){detail}")

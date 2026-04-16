@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from api.accounts.models import DoctorProfile
+from api.accounts.models import SystemSettings
 from api.appointments.models import (
     IllnessCategory,
     Appointment,
@@ -39,9 +40,11 @@ class AppointmentSerializer(serializers.ModelSerializer):
             "doctor_name",
             "doctor_uuid",
             "payment_status",
+            "fee",
             "illness_category",
             "illness_category_uuid",
             "description",
+            "preferred_date",
             "appointment_date",
             "start_time",
             "end_time",
@@ -57,13 +60,17 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Appointment
-        fields = ["illness_category_uuid", "description", "appointment_date"]
+        fields = ["illness_category_uuid", "description", "preferred_date"]
 
     def create(self, validated_data):
         user = self.context["request"].user
+        clinic_settings = SystemSettings.get_solo()
 
         return Appointment.objects.create(
-            created_by=user, status="pending", **validated_data
+            created_by=user,
+            status="pending",
+            fee=clinic_settings.appointment_fee,
+            **validated_data
         )
 
 
@@ -121,6 +128,8 @@ class AppointmentLogSerializer(serializers.ModelSerializer):
             "performed_by",
             "timestamp",
         ]
+        
+
 
 
 class PaymentSerializer(serializers.ModelSerializer):

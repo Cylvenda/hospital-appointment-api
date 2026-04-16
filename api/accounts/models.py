@@ -5,6 +5,7 @@ from django.contrib.auth.models import (
     BaseUserManager,
     PermissionsMixin,
 )
+from django.contrib.auth.hashers import identify_hasher, make_password
 
 
 # Custom User Manager
@@ -33,8 +34,6 @@ class UserManager(BaseUserManager):
 
 
 # Custom User Model
-
-
 class User(AbstractBaseUser, PermissionsMixin):
 
     class Role(models.TextChoices):
@@ -59,6 +58,15 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     objects = UserManager()
 
+    def save(self, *args, **kwargs):
+        # Guardrail: if a raw password is assigned directly, hash it before saving.
+        if self.password and not self.password.startswith("!"):
+            try:
+                identify_hasher(self.password)
+            except ValueError:
+                self.password = make_password(self.password)
+        super().save(*args, **kwargs)
+
     @property
     def full_name(self):
         return f"{self.first_name} {self.last_name}".strip()
@@ -68,8 +76,6 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 
 # Doctor Profile
-
-
 class DoctorProfile(models.Model):
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     user = models.OneToOneField(
@@ -83,8 +89,6 @@ class DoctorProfile(models.Model):
 
 
 # Doctor Categories (Many-to-Many)
-
-
 class DoctorCategory(models.Model):
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     doctor = models.ForeignKey(DoctorProfile, on_delete=models.CASCADE)
@@ -120,8 +124,6 @@ class DoctorAvailability(models.Model):
 
 
 # Patient Profile
-
-
 class PatientProfile(models.Model):
     GENDER_CHOICES = [
         ("male", "Male"),
@@ -139,3 +141,19 @@ class PatientProfile(models.Model):
 
     def __str__(self):
         return self.user.full_name
+
+
+class SystemSettings(models.Model):
+    appointment_fee = models.DecimalField(
+        max_digits=10, decimal_places=2, default=5000.00
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @classmethod
+    def get_solo(cls):
+        instance, _ = cls.objects.get_or_create(pk=1)
+        return instance
+
+    def __str__(self):
+        return "Clinic Settings"
