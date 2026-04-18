@@ -2,7 +2,16 @@ from rest_framework import serializers
 from .models import Notification
 
 
+class NotificationUserSerializer(serializers.Serializer):
+    uuid = serializers.UUIDField()
+    email = serializers.EmailField()
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+
+
 class NotificationSerializer(serializers.ModelSerializer):
+    triggered_by = NotificationUserSerializer(read_only=True)
+
     class Meta:
         model = Notification
         fields = [
@@ -12,10 +21,8 @@ class NotificationSerializer(serializers.ModelSerializer):
             "notification_type",
             "is_read",
             "read_at",
-            "group_uuid",
-            "invitation_uuid",
-            "membership_uuid",
-            "meeting_uuid",
+            "appointment_uuid",
+            "triggered_by",
             "created_at",
         ]
 

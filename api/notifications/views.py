@@ -19,10 +19,10 @@ class MarkNotificationAsReadView(generics.GenericAPIView):
     serializer_class = EmptySerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def patch(self, request, notification_uuid):
+    def patch(self, request, uuid):
         notification = get_object_or_404(
             Notification,
-            uuid=notification_uuid,
+            uuid=uuid,
             user=request.user,
         )
 
@@ -32,5 +32,20 @@ class MarkNotificationAsReadView(generics.GenericAPIView):
 
         return Response(
             {"detail": "Notification marked as read."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class MarkAllAsReadView(generics.GenericAPIView):
+    serializer_class = EmptySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        notifications = Notification.objects.filter(user=request.user, is_read=False)
+        count = notifications.count()
+        notifications.update(is_read=True, read_at=timezone.now())
+
+        return Response(
+            {"detail": f"{count} notifications marked as read."},
             status=status.HTTP_200_OK,
         )

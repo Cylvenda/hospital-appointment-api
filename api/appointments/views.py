@@ -45,7 +45,7 @@ def _notify(
 
 
 class AppointmentViewSet(viewsets.ModelViewSet):
-    queryset = Appointment.objects.all()
+    queryset = Appointment.objects.all().order_by("-created_at")
     permission_classes = [IsAuthenticated]
     lookup_field = "uuid"
     lookup_url_kwarg = "uuid"
@@ -88,7 +88,6 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         queryset = (
             DoctorProfile.objects.select_related("user")
             .filter(is_available=True)
-            .order_by("-created_at")
         )
         serializer = DoctorOptionSerializer(queryset, many=True)
         return Response(serializer.data)
@@ -168,7 +167,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("You can only cancel your appointment")
 
         appointment.status = Appointment.Status.CANCELLED
-        appointment.save(update_fields=["status", "upda ted_at"])
+        appointment.save(update_fields=["status", "updated_at"])
 
         create_log(appointment, user, "Appointment cancelled by patient")
         _notify(
@@ -256,16 +255,37 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 )
 
         elif role == "doctor":
-            if old.status != updated.status and updated.status == "completed":
-                create_log(updated, user, "Appointment completed")
-                _notify(
-                    user=updated.created_by,
-                    title="Appointment Completed",
-                    message="Your doctor marked your appointment as completed.",
-                    notification_type="general",
-                    appointment=updated,
-                    triggered_by=user,
-                )
+            if old.status != updated.status:
+                if updated.status == Appointment.Status.ACCEPTED:
+                    create_log(updated, user, "Appointment accepted by doctor")
+                    _notify(
+                        user=updated.created_by,
+                        title="Appointment Accepted",
+                        message="Your doctor accepted your appointment.",
+                        notification_type="appointment_approved",
+                        appointment=updated,
+                        triggered_by=user,
+                    )
+                elif updated.status == Appointment.Status.DECLINED:
+                    create_log(updated, user, "Appointment declined by doctor")
+                    _notify(
+                        user=updated.created_by,
+                        title="Appointment Declined",
+                        message="Your doctor declined your appointment.",
+                        notification_type="appointment_rejected",
+                        appointment=updated,
+                        triggered_by=user,
+                    )
+                elif updated.status == Appointment.Status.COMPLETED:
+                    create_log(updated, user, "Appointment completed")
+                    _notify(
+                        user=updated.created_by,
+                        title="Appointment Completed",
+                        message="Your doctor marked your appointment as completed.",
+                        notification_type="general",
+                        appointment=updated,
+                        triggered_by=user,
+                    )
 
 
 class IllnessCategoryViewSet(viewsets.ModelViewSet):

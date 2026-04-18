@@ -111,8 +111,14 @@ class AppointmentDoctorUpdateSerializer(serializers.ModelSerializer):
         fields = ["diagnosis", "notes", "status"]
 
     def validate_status(self, value):
-        if value != "completed":
-            raise serializers.ValidationError("Doctor can only mark as completed")
+        if value not in [
+            Appointment.Status.ACCEPTED,
+            Appointment.Status.DECLINED,
+            Appointment.Status.COMPLETED,
+        ]:
+            raise serializers.ValidationError(
+                "Doctor can only mark appointments as accepted, declined, or completed"
+            )
         return value
 
 

@@ -15,4 +15,6 @@ urlpatterns = [
     path("api/", include("api.accounts.urls")),
     # appointments
     path("api/", include("api.appointments.urls")),
+    # notifications
+    path("api/", include("api.notifications.urls")),
 ]
