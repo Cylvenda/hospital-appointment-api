@@ -9,11 +9,24 @@ logger = logging.getLogger(__name__)
 
 
 @background(schedule=1)
-def send_notification_email(subject, message, recipient_email, extra_info=None):
+def send_notification_email(
+    subject,
+    message,
+    recipient_email,
+    extra_info=None,
+    appointment_details=None,
+    action_details=None,
+    cta_url=None,
+    cta_label=None,
+):
     context = {
         "title": subject,
         "message": message,
         "extra_info": extra_info,
+        "appointment_details": appointment_details or [],
+        "action_details": action_details or [],
+        "cta_url": cta_url,
+        "cta_label": cta_label,
         "app_name": getattr(settings, "SITE_NAME", "Patient Appointment"),
         "year": datetime.now().year,
     }

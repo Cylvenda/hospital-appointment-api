@@ -105,17 +105,18 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         _notify(
             user=user,
             title="Appointment Created",
-            message="Your appointment has been created and is awaiting payment.",
+            message="Your appointment request has been created successfully and is now waiting for payment confirmation.",
             notification_type="appointment_booked",
             appointment=appointment,
             triggered_by=user,
+            extra_info="After payment is completed, the hospital team can continue processing your appointment request.",
         )
 
         doctor_user = getattr(appointment.doctor, "user", None)
         _notify(
             user=doctor_user,
             title="New Appointment Booked",
-            message="A new appointment was booked and assigned to you.",
+            message="A new appointment request has been booked and assigned to you for review.",
             notification_type="appointment_booked",
             appointment=appointment,
             triggered_by=user,
@@ -144,10 +145,11 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         _notify(
             user=user,
             title="Payment Initiated",
-            message="Your payment request has been sent successfully.",
+            message="Your payment request has been submitted successfully and is now being processed.",
             notification_type="general",
             appointment=appointment,
             triggered_by=user,
+            extra_info="You will receive another email once the payment is confirmed or if it fails.",
         )
 
         return Response(
@@ -173,20 +175,22 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         _notify(
             user=user,
             title="Appointment Cancelled",
-            message="Your appointment has been cancelled.",
+            message="Your appointment has been cancelled successfully.",
             notification_type="appointment_cancelled",
             appointment=appointment,
             triggered_by=user,
+            extra_info=appointment.cancel_reason or "If needed, you can create a new appointment request from your dashboard.",
         )
 
         doctor_user = getattr(appointment.doctor, "user", None)
         _notify(
             user=doctor_user,
             title="Appointment Cancelled",
-            message="A patient cancelled an appointment assigned to you.",
+            message="A patient cancelled an appointment that had been assigned to you.",
             notification_type="appointment_cancelled",
             appointment=appointment,
             triggered_by=user,
+            extra_info=appointment.cancel_reason or None,
         )
 
         return Response({"message": "Appointment cancelled successfully"})
@@ -222,7 +226,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 _notify(
                     user=updated.created_by,
                     title="Appointment Status Updated",
-                    message=f"Your appointment status is now '{updated.status}'.",
+                    message=f"Your appointment status has been updated to '{updated.get_status_display()}'.",
                     notification_type=(
                         "appointment_approved"
                         if updated.status == Appointment.Status.ACCEPTED
@@ -237,7 +241,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 _notify(
                     user=updated.doctor.user,
                     title="New Appointment Assigned",
-                    message="A receptionist assigned you a new appointment.",
+                    message="A new appointment has been assigned to you by the hospital team.",
                     notification_type="appointment_booked",
                     appointment=updated,
                     triggered_by=user,
@@ -248,10 +252,11 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 _notify(
                     user=updated.created_by,
                     title="Appointment Rescheduled",
-                    message=f"Your appointment was moved to {updated.appointment_date}.",
+                    message="Your appointment has been rescheduled. Please review the updated date and time below.",
                     notification_type="appointment_rescheduled",
                     appointment=updated,
                     triggered_by=user,
+                    extra_info="Please make sure the new schedule still works for you.",
                 )
 
         elif role == "doctor":
@@ -261,7 +266,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                     _notify(
                         user=updated.created_by,
                         title="Appointment Accepted",
-                        message="Your doctor accepted your appointment.",
+                        message="Your doctor has accepted your appointment.",
                         notification_type="appointment_approved",
                         appointment=updated,
                         triggered_by=user,
@@ -271,7 +276,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                     _notify(
                         user=updated.created_by,
                         title="Appointment Declined",
-                        message="Your doctor declined your appointment.",
+                        message="Your doctor declined your appointment. Please review the appointment details and book another slot if needed.",
                         notification_type="appointment_rejected",
                         appointment=updated,
                         triggered_by=user,
@@ -285,6 +290,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                         notification_type="general",
                         appointment=updated,
                         triggered_by=user,
+                        extra_info="Thank you for using the appointment system.",
                     )
 
 
@@ -358,6 +364,7 @@ def clickpesa_webhook(request):
                     notification_type="payment_success",
                     appointment=appointment,
                     triggered_by=appointment.created_by,
+                    extra_info="Your appointment can now proceed to the next review stage.",
                 )
                 processed += 1
         elif event in {"PAYMENT FAILED", "FAILED"}:
@@ -379,6 +386,7 @@ def clickpesa_webhook(request):
                     notification_type="general",
                     appointment=appointment,
                     triggered_by=appointment.created_by,
+                    extra_info="You can retry the payment from your appointment page.",
                 )
                 processed += 1
 

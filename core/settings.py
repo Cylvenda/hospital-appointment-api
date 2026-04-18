@@ -193,10 +193,6 @@ CORS_ALLOW_HEADERS = [
     "x-csrftoken",
 ]
 
-# ─── Site / Domain ────────────────────────────────────────────────────────────
-
-DOMAIN = "localhost:3000"
-SITE_NAME = "Meeting Hub"
 
 # ─── Authentication ───────────────────────────────────────────────────────────
 
@@ -246,7 +242,7 @@ SERVER_EMAIL = DEFAULT_FROM_EMAIL
 # ─── DRF Spectacular ─────────────────────────────────────────────────────────
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Digital Patient Appointment Management System API",
+    "TITLE": "Patient Appointment Management System API",
     "DESCRIPTION": "API for managing patient appointments, scheduling, and healthcare services.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
