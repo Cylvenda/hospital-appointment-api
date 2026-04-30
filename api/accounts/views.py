@@ -219,13 +219,13 @@ class AdminSettingsView(GenericAPIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminOrReceptionist]
 
     def get(self, request, *args, **kwargs):
-        sytsem_settings = SystemSettings.get_solo()
+        system_settings = SystemSettings.get_solo()
         payload = {
-            "sytsem_name": getattr(settings, "SITE_NAME", "Patient Management System"),
+            "clinic_name": getattr(settings, "SITE_NAME", "Patient Management System"),
             "support_email": getattr(settings, "DEFAULT_FROM_EMAIL", "support@localhost"),
-            "sytsem_hours": "07:30 AM - 06:00 PM",
+            "clinic_hours": "07:30 AM - 06:00 PM",
             "default_time_slot": "30 minutes",
-            "appointment_fee": sytsem_settings.appointment_fee,
+            "appointment_fee": system_settings.appointment_fee,
             "secure_sessions": True,
             "patient_confirmation_emails": bool(getattr(settings, "EMAIL_HOST", "")),
         }
@@ -235,25 +235,25 @@ class AdminSettingsView(GenericAPIView):
     def patch(self, request, *args, **kwargs):
         if request.user.role != User.Role.ADMIN:
             return Response(
-                {"detail": "Only admin can update sytsem settings."},
+                {"detail": "Only admin can update system settings."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        sytsem_settings = SystemSettings.get_solo()
+        system_settings = SystemSettings.get_solo()
         serializer = self.get_serializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
 
         appointment_fee = serializer.validated_data.get("appointment_fee")
         if appointment_fee is not None:
-            sytsem_settings.appointment_fee = appointment_fee
-            sytsem_settings.save(update_fields=["appointment_fee", "updated_at"])
+            system_settings.appointment_fee = appointment_fee
+            system_settings.save(update_fields=["appointment_fee", "updated_at"])
 
         payload = {
-            "sytsem_name": getattr(settings, "SITE_NAME", "Meeting Hub"),
+            "clinic_name": getattr(settings, "SITE_NAME", "Meeting Hub"),
             "support_email": getattr(settings, "DEFAULT_FROM_EMAIL", "support@localhost"),
-            "sytsem_hours": "07:30 AM - 06:00 PM",
+            "clinic_hours": "07:30 AM - 06:00 PM",
             "default_time_slot": "30 minutes",
-            "appointment_fee": sytsem_settings.appointment_fee,
+            "appointment_fee": system_settings.appointment_fee,
             "secure_sessions": True,
             "patient_confirmation_emails": bool(getattr(settings, "EMAIL_HOST", "")),
         }

@@ -23,6 +23,7 @@ class UserManager(BaseUserManager):
     def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_active", True)
+        extra_fields.setdefault("role", "admin")
         extra_fields.setdefault("is_superuser", True)
 
         if extra_fields.get("is_staff") is not True:
@@ -144,9 +145,7 @@ class PatientProfile(models.Model):
 
 
 class SystemSettings(models.Model):
-    appointment_fee = models.DecimalField(
-        max_digits=10, decimal_places=2, default=5000.00
-    )
+    appointment_fee = models.DecimalField(max_digits=10, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
