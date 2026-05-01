@@ -1,5 +1,4 @@
 import logging
-from background_task import background
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.conf import settings
@@ -7,8 +6,6 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-
-@background(schedule=1)
 def send_notification_email(
     subject,
     message,

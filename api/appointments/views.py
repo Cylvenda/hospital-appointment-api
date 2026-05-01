@@ -19,6 +19,7 @@ from api.appointments.serializers import (
 from api.notifications.services import create_and_send_notification
 from .logs import create_log
 from .services import initiate_payment
+from api.notifications.task import send_notification_email
 
 
 def _notify(
@@ -102,23 +103,25 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             user=user,
             action="Appointment created (awaiting payment)",
         )
-        _notify(
-            user=user,
-            title="Appointment Created",
+        send_notification_email(
+            subject="Appointment Created",
             message="Your appointment request has been created successfully and is now waiting for payment confirmation.",
+            recipient_email=user.email,
+            appointment_details=appointment,
+            action_details="Appointment created (awaiting payment)",
             notification_type="appointment_booked",
-            appointment=appointment,
             triggered_by=user,
             extra_info="After payment is completed, the hospital team can continue processing your appointment request.",
         )
 
         doctor_user = getattr(appointment.doctor, "user", None)
-        _notify(
-            user=doctor_user,
-            title="New Appointment Booked",
-            message="A new appointment request has been booked and assigned to you for review.",
+        send_notification_email(
+            subject="New Appointment Booked",
+            message="A new appointment request has been booked and assigned to you For review.",
+            recipient_email=doctor_user.email,
+            appointment_details=appointment,
+            action_details="New appointment assigned",
             notification_type="appointment_booked",
-            appointment=appointment,
             triggered_by=user,
         )
 
