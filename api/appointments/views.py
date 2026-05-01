@@ -103,27 +103,26 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             user=user,
             action="Appointment created (awaiting payment)",
         )
-        send_notification_email(
-            subject="Appointment Created",
+        _notify(
+            user=user,
+            title="Appointment Created",
             message="Your appointment request has been created successfully and is now waiting for payment confirmation.",
-            recipient_email=user.email,
-            appointment_details=appointment,
-            action_details="Appointment created (awaiting payment)",
             notification_type="appointment_booked",
+            appointment=appointment,
             triggered_by=user,
             extra_info="After payment is completed, the hospital team can continue processing your appointment request.",
         )
 
         doctor_user = getattr(appointment.doctor, "user", None)
-        send_notification_email(
-            subject="New Appointment Booked",
-            message="A new appointment request has been booked and assigned to you For review.",
-            recipient_email=doctor_user.email,
-            appointment_details=appointment,
-            action_details="New appointment assigned",
-            notification_type="appointment_booked",
-            triggered_by=user,
-        )
+        if doctor_user:
+            _notify(
+                user=doctor_user,
+                title="New Appointment Booked",
+                message="A new appointment request has been booked and assigned to you For review.",
+                notification_type="appointment_booked",
+                appointment=appointment,
+                triggered_by=user,
+            )
 
     @action(detail=True, methods=["post"])
     def pay(self, request, uuid=None):
