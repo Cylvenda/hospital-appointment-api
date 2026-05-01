@@ -85,6 +85,8 @@ def create_and_send_notification(
     triggered_by=None,
     send_email=True,
     extra_info=None,
+    cta_url=None,
+    cta_label=None,
 ):
     if not user:
         return None
@@ -106,8 +108,8 @@ def create_and_send_notification(
             extra_info=extra_info,
             appointment_details=_build_appointment_details(appointment),
             action_details=_build_action_details(triggered_by),
-            cta_url=f"{_build_frontend_url()}/login",
-            cta_label="Open PAMS",
+            cta_url=cta_url or f"{_build_frontend_url()}/login",
+            cta_label=cta_label or "Open PAMS",
         )
 
     return notification
