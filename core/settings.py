@@ -221,6 +221,9 @@ DJOSER = {
     },
     "EMAIL": {
         "activation": "api.accounts.email.CustomActivationEmail",
+        "confirmation": "api.accounts.email.CustomConfirmationEmail",
+        "password_reset": "api.accounts.email.CustomPasswordResetEmail",
+        "password_changed_confirmation": "api.accounts.email.CustomPasswordChangedConfirmationEmail",
     },
     "EMAIL_FRONTEND_DOMAIN": "localhost:3000",
     "EMAIL_FRONTEND_PROTOCOL": "http",

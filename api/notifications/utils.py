@@ -1,11 +1,11 @@
-from django.core.mail import send_mail
+from .task import send_notification_email
 
 
 def send_payment_email(user, subject, message):
-    send_mail(
-        subject,
-        message,
-        "your-email@gmail.com",
-        [user.email],
-        fail_silently=False,
+    send_notification_email(
+        subject=subject,
+        message=message,
+        recipient_email=user.email,
+        cta_url="http://localhost:3000/patient-dashboard/payments",  # Example URL
+        cta_label="View Payment Status"
     )
