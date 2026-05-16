@@ -12,6 +12,7 @@ from api.appointments.serializers import (
     AppointmentSerializer,
     AppointmentCreateSerializer,
     AppointmentAssignSerializer,
+    AppointmentPatientUpdateSerializer,
     AppointmentDoctorUpdateSerializer,
     DoctorOptionSerializer,
     IllnessCategorySerializer,
@@ -63,6 +64,8 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 return AppointmentAssignSerializer
             if role == "doctor":
                 return AppointmentDoctorUpdateSerializer
+            if role == "patient":
+                return AppointmentPatientUpdateSerializer
 
         return AppointmentSerializer
 

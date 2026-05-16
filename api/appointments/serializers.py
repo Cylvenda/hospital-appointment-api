@@ -45,10 +45,14 @@ class AppointmentSerializer(serializers.ModelSerializer):
             "illness_category_uuid",
             "description",
             "preferred_date",
+            "preferred_date_2",
+            "preferred_date_3",
             "appointment_date",
             "start_time",
             "end_time",
             "status",
+            "diagnosis",
+            "notes",
             "created_at",
         ]
 
@@ -60,7 +64,7 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Appointment
-        fields = ["illness_category_uuid", "description", "preferred_date"]
+        fields = ["illness_category_uuid", "description", "preferred_date", "preferred_date_2", "preferred_date_3"]
 
     def create(self, validated_data):
         user = self.context["request"].user
@@ -72,6 +76,17 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
             fee=clinic_settings.appointment_fee,
             **validated_data
         )
+
+
+class AppointmentPatientUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Appointment
+        fields = [
+            "description",
+            "preferred_date",
+            "preferred_date_2",
+            "preferred_date_3",
+        ]
 
 
 class AppointmentAssignSerializer(serializers.ModelSerializer):
@@ -115,9 +130,10 @@ class AppointmentDoctorUpdateSerializer(serializers.ModelSerializer):
             Appointment.Status.ACCEPTED,
             Appointment.Status.DECLINED,
             Appointment.Status.COMPLETED,
+            Appointment.Status.CANCELLED,
         ]:
             raise serializers.ValidationError(
-                "Doctor can only mark appointments as accepted, declined, or completed"
+                "Doctor can only mark appointments as accepted, declined, completed, or cancelled"
             )
         return value
 
