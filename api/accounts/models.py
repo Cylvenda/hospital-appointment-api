@@ -45,6 +45,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     first_name = models.CharField(max_length=60, blank=True, null=True)
+    middle_name = models.CharField(max_length=60, blank=True, null=True)
     last_name = models.CharField(max_length=60, blank=True, null=True)
     email = models.EmailField(unique=True, max_length=255)
     phone = models.CharField(max_length=20, unique=True)
@@ -124,24 +125,116 @@ class DoctorAvailability(models.Model):
         return f"{self.doctor} - Day {self.day_of_week}"
 
 
+# Region and District Models
+class Region(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    name = models.CharField(max_length=100, unique=True)
+
+    def __str__(self):
+        return self.name
+
+
+class District(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    name = models.CharField(max_length=100)
+    region = models.ForeignKey(Region, on_delete=models.CASCADE, related_name="districts")
+
+    class Meta:
+        unique_together = ("name", "region")
+
+    def __str__(self):
+        return f"{self.name} ({self.region.name})"
+
+
 # Patient Profile
 class PatientProfile(models.Model):
-    GENDER_CHOICES = [
-        ("male", "Male"),
-        ("female", "Female"),
-        ("other", "Other"),
-    ]
+    class Gender(models.TextChoices):
+        MALE = "Male", "Male"
+        FEMALE = "Female", "Female"
+        OTHER = "Other", "Other"
+        PREFER_NOT_TO_SAY = "Prefer not to say", "Prefer not to say"
+
+    class EducationLevel(models.TextChoices):
+        PRIMARY = "Primary", "Primary"
+        SECONDARY = "Secondary", "Secondary"
+        CERTIFICATE = "Certificate", "Certificate"
+        DIPLOMA = "Diploma", "Diploma"
+        BACHELOR = "Bachelor Degree", "Bachelor Degree"
+        MASTER = "Master Degree", "Master Degree"
+        PHD = "PhD", "PhD"
+        OTHER = "Other", "Other"
+
+    class MaritalStatus(models.TextChoices):
+        SINGLE = "Single", "Single"
+        MARRIED = "Married", "Married"
+        DIVORCED = "Divorced", "Divorced"
+        WIDOWED = "Widowed", "Widowed"
+        SEPARATED = "Separated", "Separated"
+
+    class BloodGroup(models.TextChoices):
+        A_POS = "A+", "A+"
+        A_NEG = "A-", "A-"
+        B_POS = "B+", "B+"
+        B_NEG = "B-", "B-"
+        AB_POS = "AB+", "AB+"
+        AB_NEG = "AB-", "AB-"
+        O_POS = "O+", "O+"
+        O_NEG = "O-", "O-"
 
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     user = models.OneToOneField(
         User, on_delete=models.CASCADE, related_name="patient_profile"
     )
-    dob = models.DateField()
-    gender = models.CharField(max_length=10, choices=GENDER_CHOICES)
-    address = models.CharField(max_length=255)
+    dob = models.DateField(null=True, blank=True)
+    gender = models.CharField(max_length=20, choices=Gender.choices, null=True, blank=True)
+    address = models.CharField(max_length=255, null=True, blank=True) # Kept for migration backwards-compatibility
+
+    # Background Information
+    education = models.CharField(max_length=50, choices=EducationLevel.choices, null=True, blank=True)
+    country = models.CharField(max_length=100, default="Tanzania")
+    religion = models.CharField(max_length=100, null=True, blank=True)
+    tribe = models.CharField(max_length=100, null=True, blank=True)
+    marital_status = models.CharField(max_length=20, choices=MaritalStatus.choices, null=True, blank=True)
+    occupation = models.CharField(max_length=100, null=True, blank=True)
+
+    # Residence Information
+    veo_name = models.CharField(max_length=100, null=True, blank=True)
+    region = models.ForeignKey(Region, on_delete=models.SET_NULL, null=True, blank=True, related_name="patients")
+    district = models.ForeignKey(District, on_delete=models.SET_NULL, null=True, blank=True, related_name="patients")
+    residence = models.CharField(max_length=255, null=True, blank=True)
+
+    # Additional Medical Information
+    blood_group = models.CharField(max_length=5, choices=BloodGroup.choices, null=True, blank=True)
+    insurance_provider = models.CharField(max_length=100, null=True, blank=True)
+    insurance_number = models.CharField(max_length=100, null=True, blank=True)
+    nida_number = models.CharField(max_length=100, null=True, blank=True)
+    
+    is_profile_complete = models.BooleanField(default=False)
 
     def __str__(self):
         return self.user.full_name
+
+
+class NextOfKin(models.Model):
+    class Relationship(models.TextChoices):
+        PARENT = "Parent", "Parent"
+        SPOUSE = "Spouse", "Spouse"
+        SIBLING = "Sibling", "Sibling"
+        CHILD = "Child", "Child"
+        FRIEND = "Friend", "Friend"
+        GUARDIAN = "Guardian", "Guardian"
+        RELATIVE = "Relative", "Relative"
+
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    patient_profile = models.OneToOneField(
+        PatientProfile, on_delete=models.CASCADE, related_name="next_of_kin"
+    )
+    name = models.CharField(max_length=150)
+    phone = models.CharField(max_length=20)
+    relationship = models.CharField(max_length=20, choices=Relationship.choices)
+
+    def __str__(self):
+        return f"{self.name} ({self.relationship} of {self.patient_profile.user.full_name})"
 
 
 class SystemSettings(models.Model):

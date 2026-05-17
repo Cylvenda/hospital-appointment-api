@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from api.appointments.models import Appointment
 from api.notifications.models import Notification
-from .models import SystemSettings, DoctorProfile, User
+from .models import SystemSettings, DoctorProfile, User, Region, District
 from .serializers import (
     AdminDoctorWriteSerializer,
     AdminOverviewSerializer,
@@ -21,6 +21,8 @@ from .serializers import (
     AdminUserSerializer,
     AdminUserWriteSerializer,
     DoctorDirectorySerializer,
+    RegionSerializer,
+    DistrictSerializer,
 )
 
 
@@ -258,3 +260,23 @@ class AdminSettingsView(GenericAPIView):
             "patient_confirmation_emails": bool(getattr(settings, "EMAIL_HOST", "")),
         }
         return Response(self.get_serializer(payload).data, status=status.HTTP_200_OK)
+
+
+class RegionListView(ListAPIView):
+    queryset = Region.objects.all().order_by("name")
+    serializer_class = RegionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class DistrictListView(ListAPIView):
+    queryset = District.objects.all().order_by("name")
+    serializer_class = DistrictSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        region_uuid = self.request.query_params.get("region_uuid")
+        if region_uuid:
+            queryset = queryset.filter(region__uuid=region_uuid)
+        return queryset
+

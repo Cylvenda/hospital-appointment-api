@@ -2,17 +2,114 @@ from djoser.serializers import UserSerializer
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from api.appointments.models import IllnessCategory
-from .models import DoctorCategory, DoctorProfile
+from .models import DoctorCategory, DoctorProfile, Region, District, PatientProfile, NextOfKin
+
+
+class RegionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Region
+        fields = ("uuid", "name")
+
+
+class DistrictSerializer(serializers.ModelSerializer):
+    region_uuid = serializers.UUIDField(source="region.uuid", read_only=True)
+
+    class Meta:
+        model = District
+        fields = ("uuid", "name", "region_uuid")
+
+
+class NextOfKinSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NextOfKin
+        fields = ("name", "phone", "relationship")
+
+
+class PatientProfileSerializer(serializers.ModelSerializer):
+    region_uuid = serializers.UUIDField(source="region.uuid", required=False, allow_null=True)
+    district_uuid = serializers.UUIDField(source="district.uuid", required=False, allow_null=True)
+    region_name = serializers.CharField(source="region.name", read_only=True)
+    district_name = serializers.CharField(source="district.name", read_only=True)
+    next_of_kin = NextOfKinSerializer(required=False, allow_null=True)
+
+    class Meta:
+        model = PatientProfile
+        fields = (
+            "uuid",
+            "dob",
+            "gender",
+            "education",
+            "country",
+            "religion",
+            "tribe",
+            "marital_status",
+            "occupation",
+            "veo_name",
+            "region_uuid",
+            "district_uuid",
+            "region_name",
+            "district_name",
+            "residence",
+            "blood_group",
+            "insurance_provider",
+            "insurance_number",
+            "nida_number",
+            "is_profile_complete",
+            "next_of_kin",
+        )
+
+    def update(self, instance, validated_data):
+        next_of_kin_data = validated_data.pop("next_of_kin", None)
+        region_uuid = validated_data.pop("region", {}).get("uuid", None)
+        district_uuid = validated_data.pop("district", {}).get("uuid", None)
+
+        if region_uuid:
+            instance.region = Region.objects.filter(uuid=region_uuid).first()
+        if district_uuid:
+            instance.district = District.objects.filter(uuid=district_uuid).first()
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        instance.save()
+
+        if next_of_kin_data:
+            next_of_kin, _ = NextOfKin.objects.get_or_create(patient_profile=instance)
+            for attr, value in next_of_kin_data.items():
+                setattr(next_of_kin, attr, value)
+            next_of_kin.save()
+
+        # Check all required fields to update completion flag
+        required_fields = [
+            instance.dob,
+            instance.gender,
+            instance.education,
+            instance.marital_status,
+            instance.region,
+            instance.district,
+            instance.residence,
+        ]
+        has_kin = hasattr(instance, "next_of_kin") and instance.next_of_kin.name and instance.next_of_kin.phone
+        
+        if all(required_fields) and has_kin:
+            instance.is_profile_complete = True
+        else:
+            instance.is_profile_complete = False
+        instance.save()
+
+        return instance
 
 
 class CustomUserSerializer(UserSerializer):
     is_admin = serializers.BooleanField(source="is_superuser", read_only=True)
+    patient_profile = PatientProfileSerializer(required=False, allow_null=True)
 
     class Meta(UserSerializer.Meta):
         model = get_user_model()
         fields = (
             "uuid",
             "first_name",
+            "middle_name",
             "last_name",
             "role",
             "email",
@@ -20,8 +117,27 @@ class CustomUserSerializer(UserSerializer):
             "is_active",
             "is_staff",
             "is_admin",
+            "patient_profile",
         )
-        read_only_fields = ("uuid",)
+        read_only_fields = ("uuid", "role")
+
+    def update(self, instance, validated_data):
+        profile_data = validated_data.pop("patient_profile", None)
+        
+        # Update user fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Update nested patient profile
+        if profile_data and hasattr(instance, "patient_profile"):
+            profile_serializer = PatientProfileSerializer(
+                instance.patient_profile, data=profile_data, partial=True
+            )
+            profile_serializer.is_valid(raise_exception=True)
+            profile_serializer.save()
+
+        return instance
 
 
 class AdminUserSerializer(serializers.ModelSerializer):

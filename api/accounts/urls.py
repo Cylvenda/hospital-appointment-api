@@ -9,6 +9,8 @@ from .views import (
     CustomeTokenVerifyView,
     CustomeTokenRefreshView,
     LogoutView,
+    RegionListView,
+    DistrictListView,
 )
 
 urlpatterns = [
@@ -21,4 +23,6 @@ urlpatterns = [
     path("admin/users/<uuid:uuid>/", AdminUserDetailView.as_view(), name="admin-user-detail"),
     path("admin/doctors/", AdminDoctorsListView.as_view(), name="admin-doctors"),
     path("admin/settings/", AdminSettingsView.as_view(), name="admin-settings"),
+    path("regions/", RegionListView.as_view(), name="region-list"),
+    path("districts/", DistrictListView.as_view(), name="district-list"),
 ]
