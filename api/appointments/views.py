@@ -22,7 +22,6 @@ from .logs import create_log
 from .services import initiate_payment
 from api.notifications.task import send_notification_email
 
-
 def _notify(
     *,
     user,
