@@ -228,7 +228,7 @@ DJOSER = {
     },
     "EMAIL_FRONTEND_DOMAIN": "localhost:3000",
     "EMAIL_FRONTEND_PROTOCOL": "http",
-    "EMAIL_FRONTEND_SITE_NAME": "Meeting Hub",
+    "EMAIL_FRONTEND_SITE_NAME": "Digital Patient Pre-Registration and Appointment Management System",
 }
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
@@ -253,7 +253,7 @@ SERVER_EMAIL = DEFAULT_FROM_EMAIL
 # ─── DRF Spectacular ─────────────────────────────────────────────────────────
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Patient Appointment Management System API",
+    "TITLE": "Digital Patient Pre-Registration and Appointment Management System API",
     "DESCRIPTION": "API for managing patient appointments, scheduling, and healthcare services.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,

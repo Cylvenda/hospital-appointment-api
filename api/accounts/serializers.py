@@ -60,13 +60,22 @@ class PatientProfileSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         next_of_kin_data = validated_data.pop("next_of_kin", None)
-        region_uuid = validated_data.pop("region", {}).get("uuid", None)
-        district_uuid = validated_data.pop("district", {}).get("uuid", None)
+        # Explicitly check for presence in validated_data to support partial updates and nulling
+        if "region" in validated_data:
+            region_data = validated_data.pop("region", {})
+            region_uuid = region_data.get("uuid", None) if region_data else None
+            if region_uuid:
+                instance.region = Region.objects.filter(uuid=region_uuid).first()
+            else:
+                instance.region = None
 
-        if region_uuid:
-            instance.region = Region.objects.filter(uuid=region_uuid).first()
-        if district_uuid:
-            instance.district = District.objects.filter(uuid=district_uuid).first()
+        if "district" in validated_data:
+            district_data = validated_data.pop("district", {})
+            district_uuid = district_data.get("uuid", None) if district_data else None
+            if district_uuid:
+                instance.district = District.objects.filter(uuid=district_uuid).first()
+            else:
+                instance.district = None
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -130,12 +139,9 @@ class CustomUserSerializer(UserSerializer):
         instance.save()
 
         # Update nested patient profile
-        if profile_data and hasattr(instance, "patient_profile"):
-            profile_serializer = PatientProfileSerializer(
-                instance.patient_profile, data=profile_data, partial=True
-            )
-            profile_serializer.is_valid(raise_exception=True)
-            profile_serializer.save()
+        if profile_data:
+            patient_profile, _ = PatientProfile.objects.get_or_create(user=instance)
+            PatientProfileSerializer().update(patient_profile, profile_data)
 
         return instance
 

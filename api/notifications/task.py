@@ -24,7 +24,7 @@ def send_notification_email(
         "action_details": action_details or [],
         "cta_url": cta_url,
         "cta_label": cta_label,
-        "app_name": getattr(settings, "SITE_NAME", "Patient Appointment"),
+        "app_name": getattr(settings, "SITE_NAME", "Digital Patient Pre-Registration and Appointment Management System"),
         "year": datetime.now().year,
     }
 
