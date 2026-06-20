@@ -109,14 +109,27 @@ class AppointmentAssignSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        status = attrs.get("status")
+        instance = getattr(self, "instance", None)
+        status = attrs.get("status", getattr(instance, "status", None))
+
         if status and status not in [
-            Appointment.Status.PENDING,
             Appointment.Status.ACCEPTED,
             Appointment.Status.CANCELLED,
             Appointment.Status.DECLINED,
         ]:
-            raise serializers.ValidationError("Invalid status")
+            raise serializers.ValidationError(
+                "Receptionists and admins can only assign, cancel, or decline an appointment."
+            )
+
+        if status == Appointment.Status.ACCEPTED:
+            missing_fields = {
+                field: "This field is required when assigning an appointment."
+                for field in ["doctor_uuid", "appointment_date", "start_time", "end_time"]
+                if not attrs.get(field) and not getattr(instance, field, None)
+            }
+            if missing_fields:
+                raise serializers.ValidationError(missing_fields)
+
         return attrs
 
 
@@ -127,13 +140,12 @@ class AppointmentDoctorUpdateSerializer(serializers.ModelSerializer):
 
     def validate_status(self, value):
         if value not in [
-            Appointment.Status.ACCEPTED,
             Appointment.Status.DECLINED,
             Appointment.Status.COMPLETED,
             Appointment.Status.CANCELLED,
         ]:
             raise serializers.ValidationError(
-                "Doctor can only mark appointments as accepted, declined, completed, or cancelled"
+                "Doctor can only mark appointments as declined, completed, or cancelled."
             )
         return value
 

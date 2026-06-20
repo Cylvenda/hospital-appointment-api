@@ -21,7 +21,22 @@ class Appointment(models.Model):
         DECLINED = "declined", "Declined"
         CANCELLED = "cancelled", "Cancelled"
         EXPIRED = "expired", "Expired"
-        COMPLETED = "completed", "Complited"
+        COMPLETED = "completed", "Completed"
+
+    ROLE_STATUS_TRANSITIONS = {
+        "admin": {
+            Status.PENDING: {Status.ACCEPTED, Status.DECLINED, Status.CANCELLED},
+            Status.ACCEPTED: {Status.COMPLETED, Status.DECLINED, Status.CANCELLED},
+        },
+        "receptionist": {
+            Status.PENDING: {Status.ACCEPTED, Status.DECLINED, Status.CANCELLED},
+            Status.ACCEPTED: {Status.COMPLETED, Status.DECLINED, Status.CANCELLED},
+        },
+        "doctor": {
+            Status.ACCEPTED: {Status.COMPLETED, Status.DECLINED, Status.CANCELLED},
+        },
+        "patient": {},
+    }
 
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     doctor = models.ForeignKey(
@@ -61,6 +76,84 @@ class Appointment(models.Model):
             models.Index(fields=["appointment_date"]),
             models.Index(fields=["status"]),
         ]
+
+    @classmethod
+    def can_transition_status(cls, role, current_status, next_status):
+        if not role or not current_status or not next_status:
+            return False
+
+        if current_status == next_status:
+            return True
+
+        role_transitions = cls.ROLE_STATUS_TRANSITIONS.get(role, {})
+        allowed_targets = role_transitions.get(current_status, set())
+        return next_status in allowed_targets
+
+    @classmethod
+    def status_label_for_context(cls, status, payment_status=None, audience=None):
+        audience = audience or "default"
+
+        if status == cls.Status.PENDING:
+            if payment_status == "completed":
+                if audience in {"patient", "default"}:
+                    return "Awaiting assignment"
+                return "Ready to assign"
+
+            if audience in {"receptionist", "admin"}:
+                return "Awaiting payment"
+
+            return "Waiting for payment"
+
+        if status == cls.Status.ACCEPTED:
+            if audience == "doctor":
+                return "Ready for review"
+            if audience == "patient":
+                return "Scheduled"
+            return "Assigned"
+
+        if status == cls.Status.COMPLETED:
+            return "Completed"
+        if status == cls.Status.CANCELLED:
+            return "Cancelled"
+        if status == cls.Status.DECLINED:
+            return "Declined"
+        if status == cls.Status.EXPIRED:
+            return "Expired"
+
+        return status.title() if status else "Unknown"
+
+    @classmethod
+    def status_summary_for_context(cls, status, payment_status=None, audience=None):
+        audience = audience or "default"
+
+        if status == cls.Status.PENDING:
+            if payment_status == "completed":
+                if audience == "doctor":
+                    return "The appointment is paid and ready for a clinical review."
+                if audience == "patient":
+                    return "Your payment has been received and the team is assigning a clinician."
+                return "The appointment is paid and ready to be scheduled."
+            if audience == "doctor":
+                return "The appointment is still waiting on payment before it reaches your queue."
+            return "The appointment is waiting for payment confirmation."
+
+        if status == cls.Status.ACCEPTED:
+            if audience == "patient":
+                return "A clinician has been assigned and the visit is scheduled."
+            if audience == "doctor":
+                return "This appointment is assigned to you and ready for assessment."
+            return "The appointment has been assigned and scheduled."
+
+        if status == cls.Status.COMPLETED:
+            return "The visit is complete and clinical notes are recorded."
+        if status == cls.Status.CANCELLED:
+            return "The appointment was cancelled and removed from the active queue."
+        if status == cls.Status.DECLINED:
+            return "The appointment was declined and needs a new booking."
+        if status == cls.Status.EXPIRED:
+            return "The appointment expired before it was processed."
+
+        return ""
 
 
 # Appointment Logs

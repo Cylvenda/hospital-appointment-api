@@ -149,10 +149,10 @@ class District(models.Model):
 # Patient Profile
 class PatientProfile(models.Model):
     class Gender(models.TextChoices):
-        MALE = "Male", "Male"
-        FEMALE = "Female", "Female"
-        OTHER = "Other", "Other"
-        PREFER_NOT_TO_SAY = "Prefer not to say", "Prefer not to say"
+        MALE = "Male", "male"
+        FEMALE = "Female", "female"
+        OTHER = "Other", "other"
+        PREFER_NOT_TO_SAY = "Prefer not to say", "prefer not to say"
 
     class EducationLevel(models.TextChoices):
         PRIMARY = "Primary", "Primary"

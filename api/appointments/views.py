@@ -227,15 +227,23 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         if role in ["receptionist", "admin"]:
             if old_status != updated.status:
                 create_log(updated, user, f"Status -> {updated.status}")
+                status_label = Appointment.status_label_for_context(
+                    updated.status,
+                    getattr(updated.payment, "status", None),
+                    audience="patient",
+                )
+                notification_type = (
+                    "appointment_approved"
+                    if updated.status == Appointment.Status.ACCEPTED
+                    else "appointment_cancelled"
+                    if updated.status == Appointment.Status.CANCELLED
+                    else "appointment_rejected"
+                )
                 _notify(
                     user=updated.created_by,
                     title="Appointment Status Updated",
-                    message=f"Your appointment status has been updated to '{updated.get_status_display()}'.",
-                    notification_type=(
-                        "appointment_approved"
-                        if updated.status == Appointment.Status.ACCEPTED
-                        else "appointment_rejected"
-                    ),
+                    message=f"Your appointment status has been updated to '{status_label}'.",
+                    notification_type=notification_type,
                     appointment=updated,
                     triggered_by=user,
                 )
