@@ -4,7 +4,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from django.db.models import Q
 import re
 from api.accounts.models import DoctorProfile
 from api.appointments.models import Appointment, IllnessCategory, Payment
@@ -71,17 +70,48 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         role = user.role
+        queue_name = self.request.query_params.get("queue")
 
         if role == "patient":
-            return Appointment.objects.filter(created_by=user).order_by("-created_at")
-        if role == "doctor":
-            return Appointment.objects.filter(doctor__user=user).order_by("-created_at")
-        if role == "receptionist":
-            return Appointment.objects.all().order_by("-created_at")
-        if role == "admin":
-            return Appointment.objects.all().order_by("-created_at")
+            queryset = Appointment.objects.filter(created_by=user)
+        elif role == "doctor":
+            queryset = Appointment.objects.filter(doctor__user=user)
+        elif role == "receptionist":
+            queryset = Appointment.objects.all()
+        elif role == "admin":
+            queryset = Appointment.objects.all()
+        else:
+            return Appointment.objects.none()
 
-        return Appointment.objects.none()
+        if queue_name:
+            queryset = Appointment.apply_queue_filter(queryset, role, queue_name)
+
+        return queryset.distinct().order_by("-created_at")
+
+    @action(detail=False, methods=["get"], url_path="queues")
+    def queues(self, request):
+        role = request.user.role
+        base_queryset = Appointment.objects.all()
+
+        if role == "patient":
+            base_queryset = base_queryset.filter(created_by=request.user)
+        elif role == "doctor":
+            base_queryset = base_queryset.filter(doctor__user=request.user)
+        elif role in {"receptionist", "admin"}:
+            base_queryset = base_queryset.all()
+        else:
+            raise PermissionDenied("You do not have permission to view appointment queues")
+
+        available_queues = Appointment.available_queues_for_role(role)
+        data = [
+            {
+                "name": queue_name,
+                "label": queue_label,
+                "count": Appointment.apply_queue_filter(base_queryset, role, queue_name).distinct().count(),
+            }
+            for queue_name, queue_label in available_queues.items()
+        ]
+        return Response(data)
 
     @action(detail=False, methods=["get"], url_path="doctors")
     def doctors(self, request):

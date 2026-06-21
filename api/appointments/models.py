@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 
 # Illness Categories
@@ -36,6 +37,36 @@ class Appointment(models.Model):
             Status.ACCEPTED: {Status.COMPLETED, Status.DECLINED, Status.CANCELLED},
         },
         "patient": {},
+    }
+
+    ROLE_QUEUES = {
+        "admin": {
+            "all": "All Appointments",
+            "daily-schedule": "Daily Schedule",
+            "completed": "Completed",
+            "cancelled": "Cancelled",
+        },
+        "receptionist": {
+            "new": "New Appointments",
+            "awaiting-payment": "Awaiting Payment",
+            "awaiting-doctor-assignment": "Awaiting Doctor Assignment",
+            "today": "Today's Schedule",
+            "checked-in": "Checked-In Patients",
+            "completed": "Completed",
+            "cancelled": "Cancelled",
+        },
+        "doctor": {
+            "assigned": "Assigned Patients",
+            "waiting-for-consultation": "Waiting for Consultation",
+            "in-consultation": "In Consultation",
+            "completed": "Completed Consultations",
+        },
+        "patient": {
+            "upcoming": "Upcoming",
+            "completed": "Completed",
+            "cancelled": "Cancelled",
+            "payment-history": "Payment History",
+        },
     }
 
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
@@ -88,6 +119,97 @@ class Appointment(models.Model):
         role_transitions = cls.ROLE_STATUS_TRANSITIONS.get(role, {})
         allowed_targets = role_transitions.get(current_status, set())
         return next_status in allowed_targets
+
+    @classmethod
+    def available_queues_for_role(cls, role):
+        return cls.ROLE_QUEUES.get(role, {})
+
+    @classmethod
+    def apply_queue_filter(cls, queryset, role, queue_name):
+        queue_name = (queue_name or "").strip().lower()
+        if not queue_name:
+            return queryset
+
+        today = timezone.localdate()
+        current_time = timezone.localtime().time()
+
+        if role == "admin":
+            if queue_name == "daily-schedule":
+                return queryset.filter(appointment_date=today)
+            if queue_name == "completed":
+                return queryset.filter(status=cls.Status.COMPLETED)
+            if queue_name == "cancelled":
+                return queryset.filter(status=cls.Status.CANCELLED)
+            return queryset
+
+        if role == "receptionist":
+            if queue_name == "new":
+                return queryset.filter(
+                    status=cls.Status.PENDING,
+                    payment__status=Payment.Status.PENDING,
+                    created_at__date=today,
+                )
+            if queue_name == "awaiting-payment":
+                return queryset.filter(
+                    status=cls.Status.PENDING,
+                    payment__status=Payment.Status.PENDING,
+                )
+            if queue_name == "awaiting-doctor-assignment":
+                return queryset.filter(
+                    status=cls.Status.PENDING,
+                    payment__status=Payment.Status.COMPLETED,
+                )
+            if queue_name == "today":
+                return queryset.filter(appointment_date=today, status=cls.Status.ACCEPTED)
+            if queue_name == "checked-in":
+                return queryset.filter(
+                    appointment_date=today,
+                    status=cls.Status.ACCEPTED,
+                    start_time__lte=current_time,
+                )
+            if queue_name == "completed":
+                return queryset.filter(status=cls.Status.COMPLETED)
+            if queue_name == "cancelled":
+                return queryset.filter(status=cls.Status.CANCELLED)
+            return queryset
+
+        if role == "doctor":
+            if queue_name == "assigned":
+                return queryset.filter(status=cls.Status.ACCEPTED)
+            if queue_name == "waiting-for-consultation":
+                return queryset.filter(
+                    status=cls.Status.ACCEPTED,
+                    appointment_date__gt=today,
+                )
+            if queue_name == "in-consultation":
+                return queryset.filter(
+                    status=cls.Status.ACCEPTED,
+                    appointment_date=today,
+                    start_time__lte=current_time,
+                )
+            if queue_name == "completed":
+                return queryset.filter(status=cls.Status.COMPLETED)
+            return queryset
+
+        if role == "patient":
+            if queue_name == "upcoming":
+                return queryset.filter(status__in=[cls.Status.PENDING, cls.Status.ACCEPTED])
+            if queue_name == "completed":
+                return queryset.filter(status=cls.Status.COMPLETED)
+            if queue_name == "cancelled":
+                return queryset.filter(status=cls.Status.CANCELLED)
+            if queue_name == "payment-history":
+                return queryset.exclude(payment__status=Payment.Status.PENDING)
+            return queryset
+
+        return queryset
+
+    @classmethod
+    def queue_counts_for_queryset(cls, queryset, role):
+        counts = {}
+        for queue_name in cls.available_queues_for_role(role).keys():
+            counts[queue_name] = cls.apply_queue_filter(queryset, role, queue_name).distinct().count()
+        return counts
 
     @classmethod
     def status_label_for_context(cls, status, payment_status=None, audience=None):
