@@ -10,10 +10,12 @@ from rest_framework_simplejwt.views import (
     TokenVerifyView,
 )
 from rest_framework.views import APIView
+from django.http import HttpResponse
 from rest_framework.response import Response
 from api.appointments.models import Appointment
 from api.notifications.models import Notification
 from .models import SystemSettings, DoctorProfile, User, Region, District
+from .report_generator import generate_general_docx_report, generate_general_pdf_report
 from .serializers import (
     AdminDoctorWriteSerializer,
     AdminOverviewSerializer,
@@ -122,6 +124,7 @@ class AdminOverviewView(GenericAPIView):
             "total_users": User.objects.count(),
             "total_patients": User.objects.filter(role=User.Role.PATIENT).count(),
             "total_doctors": DoctorProfile.objects.count(),
+            "total_lab_techs": User.objects.filter(role=User.Role.LAB_TECH).count(),
             "total_receptionists": User.objects.filter(
                 role=User.Role.RECEPTIONIST
             ).count(),
@@ -162,6 +165,7 @@ class AdminUsersListView(ListAPIView):
                 | Q(first_name__icontains=search)
                 | Q(last_name__icontains=search)
                 | Q(phone__icontains=search)
+                | Q(patient_profile__patient_id__icontains=search)
             )
         return queryset
 
@@ -280,3 +284,26 @@ class DistrictListView(ListAPIView):
             queryset = queryset.filter(region__uuid=region_uuid)
         return queryset
 
+class ReportGenerationView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        format_type = request.query_params.get("format", "pdf").lower()
+        
+        if format_type == "docx":
+            buffer = generate_general_docx_report(request.user)
+            response = HttpResponse(
+                buffer, 
+                content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+            response["Content-Disposition"] = f'attachment; filename="{request.user.role}_report.docx"'
+            return response
+            
+        elif format_type == "pdf":
+            buffer = generate_general_pdf_report(request.user)
+            response = HttpResponse(buffer, content_type="application/pdf")
+            response["Content-Disposition"] = f'attachment; filename="{request.user.role}_report.pdf"'
+            return response
+            
+        else:
+            return Response({"detail": "Invalid format type. Supported formats are 'pdf' and 'docx'."}, status=400)

@@ -15,6 +15,20 @@ urlpatterns = [
     path("api/", include("api.accounts.urls")),
     # appointments
     path("api/", include("api.appointments.urls")),
+    # consultations
+    path("api/", include("api.consultations.urls")),
+    # medical records
+    path("api/", include("api.medical_records.urls")),
+    # prescriptions
+    path("api/", include("api.prescriptions.urls")),
+    # laboratory
+    path("api/", include("api.laboratory.urls")),
+    # billing
+    path("api/", include("api.billing.urls")),
+    # pharmacy
+    path("api/", include("api.pharmacy.urls")),
     # notifications
     path("api/", include("api.notifications.urls")),
+    # health education
+    path("api/", include("api.health_education.urls")),
 ]

@@ -1,5 +1,7 @@
 import uuid
 from django.db import models
+import random
+import string
 from django.contrib.auth.models import (
     AbstractBaseUser,
     BaseUserManager,
@@ -40,6 +42,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     class Role(models.TextChoices):
         ADMIN = "admin", "Admin"
         DOCTOR = "doctor", "Doctor"
+        LAB_TECH = "lab_tech", "Lab Technician"
         RECEPTIONIST = "receptionist", "Receptionist"
         PATIENT = "patient", "Patient"
 
@@ -182,6 +185,7 @@ class PatientProfile(models.Model):
         O_NEG = "O-", "O-"
 
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    patient_id = models.CharField(max_length=6, unique=True, blank=True, null=True)
     user = models.OneToOneField(
         User, on_delete=models.CASCADE, related_name="patient_profile"
     )
@@ -210,6 +214,15 @@ class PatientProfile(models.Model):
     nida_number = models.CharField(max_length=100, null=True, blank=True)
     
     is_profile_complete = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+        if not self.patient_id:
+            while True:
+                pid = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+                if not PatientProfile.objects.filter(patient_id=pid).exists():
+                    self.patient_id = pid
+                    break
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.user.full_name

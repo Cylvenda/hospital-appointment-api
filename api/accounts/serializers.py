@@ -36,6 +36,7 @@ class PatientProfileSerializer(serializers.ModelSerializer):
         model = PatientProfile
         fields = (
             "uuid",
+            "patient_id",
             "dob",
             "gender",
             "education",
@@ -150,6 +151,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
     is_admin = serializers.BooleanField(source="is_superuser", read_only=True)
     username = serializers.SerializerMethodField()
     full_name = serializers.CharField(read_only=True)
+    patient_profile = PatientProfileSerializer(read_only=True)
 
     class Meta:
         model = get_user_model()
@@ -165,6 +167,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "is_active",
             "is_staff",
             "is_admin",
+            "patient_profile",
         )
 
     def get_username(self, obj):
@@ -199,6 +202,7 @@ class AdminOverviewSerializer(serializers.Serializer):
     total_users = serializers.IntegerField()
     total_patients = serializers.IntegerField()
     total_doctors = serializers.IntegerField()
+    total_lab_techs = serializers.IntegerField()
     total_receptionists = serializers.IntegerField()
     active_users = serializers.IntegerField()
     today_appointments = serializers.IntegerField()

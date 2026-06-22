@@ -19,7 +19,6 @@ from api.appointments.serializers import (
 from api.notifications.services import create_and_send_notification
 from .logs import create_log
 from .services import initiate_payment
-from api.notifications.task import send_notification_email
 
 def _notify(
     *,
@@ -85,6 +84,10 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
         if queue_name:
             queryset = Appointment.apply_queue_filter(queryset, role, queue_name)
+
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(appointment_id__icontains=search)
 
         return queryset.distinct().order_by("-created_at")
 

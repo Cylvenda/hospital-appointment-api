@@ -32,9 +32,11 @@ def _build_appointment_details(appointment):
         doctor_name = appointment.doctor.user.full_name or appointment.doctor.user.email
 
     payment = getattr(appointment, "payment", None)
+    appointment_ref = getattr(appointment, "appointment_id", None) or str(getattr(appointment, "uuid", ""))
 
     details = [
-        {"label": "Appointment ID", "value": str(appointment.uuid)},
+        {"label": "Appointment ID", "value": appointment_ref},
+        {"label": "Reference UUID", "value": str(appointment.uuid)},
         {"label": "Service", "value": _display_value(getattr(appointment.category, "name", None))},
         {"label": "Status", "value": appointment.get_status_display()},
         {"label": "Preferred Date", "value": _format_date(appointment.preferred_date)},
@@ -75,6 +77,23 @@ def _build_frontend_url():
     return f"{protocol}://{domain}"
 
 
+def _build_appointment_reference(appointment):
+    if not appointment:
+        return None
+
+    return getattr(appointment, "appointment_id", None) or str(getattr(appointment, "uuid", ""))
+
+
+def _decorate_email_content(title, message, appointment):
+    appointment_ref = _build_appointment_reference(appointment)
+    if not appointment_ref:
+        return title, message
+
+    subject = f"{title} - Appointment {appointment_ref}"
+    body = f"Appointment ID: {appointment_ref}\n\n{message}"
+    return subject, body
+
+
 def create_and_send_notification(
     *,
     user,
@@ -101,9 +120,10 @@ def create_and_send_notification(
     )
 
     if send_email and user.email:
+        email_subject, email_message = _decorate_email_content(title, message, appointment)
         send_notification_email(
-            subject=title,
-            message=message,
+            subject=email_subject,
+            message=email_message,
             recipient_email=user.email,
             extra_info=extra_info,
             appointment_details=_build_appointment_details(appointment),

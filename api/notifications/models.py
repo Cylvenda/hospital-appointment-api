@@ -12,6 +12,14 @@ class Notification(models.Model):
         APPOINTMENT_CANCELLED = "appointment_cancelled", "Appointment Cancelled"
         APPOINTMENT_REMINDER = "appointment_reminder", "Appointment Reminder"
         PAYMENT_SUCCESS = "payment_success", "Payment Success"
+        CONSULTATION_STARTED = "consultation_started", "Consultation Started"
+        CONSULTATION_COMPLETED = "consultation_completed", "Consultation Completed"
+        DIAGNOSIS_ADDED = "diagnosis_added", "Diagnosis Added"
+        PRESCRIPTION_READY = "prescription_ready", "Prescription Ready"
+        LAB_REQUESTED = "lab_requested", "Lab Requested"
+        LAB_RESULT_AVAILABLE = "lab_result_available", "Lab Result Available"
+        INVOICE_ISSUED = "invoice_issued", "Invoice Issued"
+        DISPENSING_READY = "dispensing_ready", "Dispensing Ready"
         GENERAL = "general", "General"
 
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
@@ -32,7 +40,7 @@ class Notification(models.Model):
     # Appointment reference
     appointment_uuid = models.UUIDField(null=True, blank=True)
 
-    # Optional: who triggered the notification (doctor/receptionist/patient)
+    # Optional: who triggered the notification (doctor/receptionist/patient/lab tech)
     triggered_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

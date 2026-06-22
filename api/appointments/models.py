@@ -1,4 +1,6 @@
 import uuid
+import random
+import string
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -70,6 +72,7 @@ class Appointment(models.Model):
     }
 
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    appointment_id = models.CharField(max_length=6, unique=True, blank=True, null=True)
     doctor = models.ForeignKey(
         "accounts.DoctorProfile",
         on_delete=models.SET_NULL,
@@ -107,6 +110,15 @@ class Appointment(models.Model):
             models.Index(fields=["appointment_date"]),
             models.Index(fields=["status"]),
         ]
+
+    def save(self, *args, **kwargs):
+        if not self.appointment_id:
+            while True:
+                aid = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+                if not Appointment.objects.filter(appointment_id=aid).exists():
+                    self.appointment_id = aid
+                    break
+        super().save(*args, **kwargs)
 
     @classmethod
     def can_transition_status(cls, role, current_status, next_status):

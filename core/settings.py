@@ -73,6 +73,13 @@ INSTALLED_APPS = [
     "api.accounts",
     "api.appointments",
     "api.notifications",
+    "api.consultations",
+    "api.medical_records",
+    "api.prescriptions",
+    "api.laboratory",
+    "api.billing",
+    "api.pharmacy",
+    "api.health_education",
 ]
 
 MIDDLEWARE = [
@@ -231,18 +238,17 @@ DJOSER = {
     "EMAIL_FRONTEND_SITE_NAME": "Digital Patient Pre-Registration and Appointment Management System",
 }
 
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-
-
-EMAIL_BACKEND = os.getenv(
-    "EMAIL_BACKEND",
-    "django.core.mail.backends.smtp.EmailBackend",
-)
 EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "").strip()
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "").strip()
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND")
+if not EMAIL_BACKEND:
+    if DEBUG and (not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD):
+        EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+    else:
+        EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 DEFAULT_FROM_EMAIL = (
     os.getenv("DEFAULT_FROM_EMAIL", "").strip()
     or EMAIL_HOST_USER

@@ -35,6 +35,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
         model = Appointment
         fields = [
             "uuid",
+            "appointment_id",
             "patient_name",
             "patient_email",
             "doctor_name",
@@ -88,6 +89,10 @@ class AppointmentPatientUpdateSerializer(serializers.ModelSerializer):
             "preferred_date_3",
         ]
 
+    def to_representation(self, instance):
+        from api.appointments.serializers import AppointmentSerializer
+        return AppointmentSerializer(instance, context=self.context).data
+
 
 class AppointmentAssignSerializer(serializers.ModelSerializer):
     doctor_uuid = serializers.SlugRelatedField(
@@ -124,13 +129,22 @@ class AppointmentAssignSerializer(serializers.ModelSerializer):
         if status == Appointment.Status.ACCEPTED:
             missing_fields = {
                 field: "This field is required when assigning an appointment."
-                for field in ["doctor_uuid", "appointment_date", "start_time", "end_time"]
-                if not attrs.get(field) and not getattr(instance, field, None)
+                for field, source in [
+                    ("doctor_uuid", "doctor"),
+                    ("appointment_date", "appointment_date"),
+                    ("start_time", "start_time"),
+                    ("end_time", "end_time"),
+                ]
+                if not attrs.get(source) and not getattr(instance, source, None)
             }
             if missing_fields:
                 raise serializers.ValidationError(missing_fields)
 
         return attrs
+
+    def to_representation(self, instance):
+        from api.appointments.serializers import AppointmentSerializer
+        return AppointmentSerializer(instance, context=self.context).data
 
 
 class AppointmentDoctorUpdateSerializer(serializers.ModelSerializer):
@@ -148,6 +162,10 @@ class AppointmentDoctorUpdateSerializer(serializers.ModelSerializer):
                 "Doctor can only mark appointments as declined, completed, or cancelled."
             )
         return value
+
+    def to_representation(self, instance):
+        from api.appointments.serializers import AppointmentSerializer
+        return AppointmentSerializer(instance, context=self.context).data
 
 
 class AppointmentLogSerializer(serializers.ModelSerializer):
