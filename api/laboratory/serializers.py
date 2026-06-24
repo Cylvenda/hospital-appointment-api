@@ -36,6 +36,10 @@ class LabRequestItemSerializer(serializers.ModelSerializer):
 
 
 class LabRequestSerializer(serializers.ModelSerializer):
+    appointment_uuid = serializers.UUIDField(
+        source="consultation.appointment.uuid",
+        read_only=True,
+    )
     consultation_uuid = serializers.UUIDField(source="consultation.uuid", read_only=True)
     doctor_uuid = serializers.UUIDField(source="doctor.uuid", read_only=True)
     doctor_name = serializers.CharField(source="doctor.user.full_name", read_only=True)
@@ -47,6 +51,7 @@ class LabRequestSerializer(serializers.ModelSerializer):
         model = LabRequest
         fields = [
             "uuid",
+            "appointment_uuid",
             "consultation_uuid",
             "doctor_uuid",
             "doctor_name",

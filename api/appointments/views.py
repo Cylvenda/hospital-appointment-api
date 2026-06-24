@@ -201,12 +201,18 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     def cancel(self, request, uuid=None):
         appointment = self.get_object()
         user = request.user
+        cancel_reason = (
+            request.data.get("reason")
+            or request.data.get("cancel_reason")
+            or ""
+        ).strip()
 
         if user != appointment.created_by:
             raise PermissionDenied("You can only cancel your appointment")
 
         appointment.status = Appointment.Status.CANCELLED
-        appointment.save(update_fields=["status", "updated_at"])
+        appointment.cancel_reason = cancel_reason
+        appointment.save(update_fields=["status", "cancel_reason", "updated_at"])
 
         create_log(appointment, user, "Appointment cancelled by patient")
         _notify(
@@ -230,7 +236,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             extra_info=appointment.cancel_reason or None,
         )
 
-        return Response({"message": "Appointment cancelled successfully"})
+        return Response(AppointmentSerializer(appointment, context={"request": request}).data)
 
     def perform_update(self, serializer):
         old = self.get_object()

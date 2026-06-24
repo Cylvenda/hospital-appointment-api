@@ -1,6 +1,11 @@
+import logging
+
 from django.conf import settings
 from .models import Notification
 from .task import send_notification_email
+
+
+logger = logging.getLogger(__name__)
 
 
 def _display_value(value, fallback="Not available"):
@@ -121,15 +126,18 @@ def create_and_send_notification(
 
     if send_email and user.email:
         email_subject, email_message = _decorate_email_content(title, message, appointment)
-        send_notification_email(
-            subject=email_subject,
-            message=email_message,
-            recipient_email=user.email,
-            extra_info=extra_info,
-            appointment_details=_build_appointment_details(appointment),
-            action_details=_build_action_details(triggered_by),
-            cta_url=cta_url or f"{_build_frontend_url()}/login",
-            cta_label=cta_label or "Open PAMS",
-        )
+        try:
+            send_notification_email(
+                subject=email_subject,
+                message=email_message,
+                recipient_email=user.email,
+                extra_info=extra_info,
+                appointment_details=_build_appointment_details(appointment),
+                action_details=_build_action_details(triggered_by),
+                cta_url=cta_url or f"{_build_frontend_url()}/login",
+                cta_label=cta_label or "Open PAMS",
+            )
+        except Exception:
+            logger.exception("Notification email delivery failed for %s", user.email)
 
     return notification

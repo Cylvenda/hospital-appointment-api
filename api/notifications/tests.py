@@ -74,3 +74,19 @@ class NotificationEmailTests(TestCase):
                 for item in appointment_details
             )
         )
+
+    @patch("api.notifications.services.send_notification_email", side_effect=Exception("smtp down"))
+    def test_notification_email_failure_does_not_block_notification_creation(self, mock_send_email):
+        notification = create_and_send_notification(
+            user=self.patient,
+            title="Appointment Updated",
+            message="Your appointment was updated.",
+            notification_type="appointment_rescheduled",
+            appointment=self.appointment,
+            triggered_by=self.doctor_user,
+        )
+
+        self.assertIsNotNone(notification)
+        self.assertEqual(notification.title, "Appointment Updated")
+        self.assertEqual(notification.user, self.patient)
+        self.assertEqual(mock_send_email.call_count, 1)
