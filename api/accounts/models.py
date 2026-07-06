@@ -88,6 +88,11 @@ class DoctorProfile(models.Model):
     )
     license_number = models.CharField(max_length=50, unique=True)
     is_available = models.BooleanField(default=True)
+    consultation_duration = models.PositiveSmallIntegerField(default=30)
+    max_appointments_per_day = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+    )
 
     def __str__(self):
         return f"Dr. {self.user.full_name}"
@@ -123,30 +128,34 @@ class DoctorAvailability(models.Model):
     day_of_week = models.IntegerField()  # 0=Monday, 6=Sunday
     start_time = models.TimeField()
     end_time = models.TimeField()
+    break_start_time = models.TimeField(null=True, blank=True)
+    break_end_time = models.TimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ("doctor", "day_of_week")
+        ordering = ["doctor", "day_of_week"]
 
     def __str__(self):
         return f"{self.doctor} - Day {self.day_of_week}"
 
 
-# Region and District Models
-class Region(models.Model):
+class DoctorUnavailableDate(models.Model):
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-    name = models.CharField(max_length=100, unique=True)
-
-    def __str__(self):
-        return self.name
-
-
-class District(models.Model):
-    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-    name = models.CharField(max_length=100)
-    region = models.ForeignKey(Region, on_delete=models.CASCADE, related_name="districts")
+    doctor = models.ForeignKey(
+        DoctorProfile,
+        on_delete=models.CASCADE,
+        related_name="unavailable_dates",
+    )
+    date = models.DateField()
+    reason = models.CharField(max_length=255, blank=True)
 
     class Meta:
-        unique_together = ("name", "region")
+        unique_together = ("doctor", "date")
+        ordering = ["date"]
 
     def __str__(self):
-        return f"{self.name} ({self.region.name})"
+        return f"{self.doctor} unavailable on {self.date}"
 
 
 # Patient Profile
@@ -203,8 +212,9 @@ class PatientProfile(models.Model):
 
     # Residence Information
     veo_name = models.CharField(max_length=100, null=True, blank=True)
-    region = models.ForeignKey(Region, on_delete=models.SET_NULL, null=True, blank=True, related_name="patients")
-    district = models.ForeignKey(District, on_delete=models.SET_NULL, null=True, blank=True, related_name="patients")
+    region = models.CharField(max_length=100, null=True, blank=True)
+    district = models.CharField(max_length=100, null=True, blank=True)
+    ward = models.CharField(max_length=100, null=True, blank=True)
     residence = models.CharField(max_length=255, null=True, blank=True)
 
     # Additional Medical Information

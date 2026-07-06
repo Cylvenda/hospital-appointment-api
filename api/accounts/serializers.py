@@ -2,21 +2,7 @@ from djoser.serializers import UserSerializer
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from api.appointments.models import IllnessCategory
-from .models import DoctorCategory, DoctorProfile, Region, District, PatientProfile, NextOfKin
-
-
-class RegionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Region
-        fields = ("uuid", "name")
-
-
-class DistrictSerializer(serializers.ModelSerializer):
-    region_uuid = serializers.UUIDField(source="region.uuid", read_only=True)
-
-    class Meta:
-        model = District
-        fields = ("uuid", "name", "region_uuid")
+from .models import DoctorCategory, DoctorProfile, PatientProfile, NextOfKin
 
 
 class NextOfKinSerializer(serializers.ModelSerializer):
@@ -26,10 +12,6 @@ class NextOfKinSerializer(serializers.ModelSerializer):
 
 
 class PatientProfileSerializer(serializers.ModelSerializer):
-    region_uuid = serializers.UUIDField(source="region.uuid", required=False, allow_null=True)
-    district_uuid = serializers.UUIDField(source="district.uuid", required=False, allow_null=True)
-    region_name = serializers.CharField(source="region.name", read_only=True)
-    district_name = serializers.CharField(source="district.name", read_only=True)
     next_of_kin = NextOfKinSerializer(required=False, allow_null=True)
 
     class Meta:
@@ -46,10 +28,9 @@ class PatientProfileSerializer(serializers.ModelSerializer):
             "marital_status",
             "occupation",
             "veo_name",
-            "region_uuid",
-            "district_uuid",
-            "region_name",
-            "district_name",
+            "region",
+            "district",
+            "ward",
             "residence",
             "blood_group",
             "insurance_provider",
@@ -61,23 +42,6 @@ class PatientProfileSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         next_of_kin_data = validated_data.pop("next_of_kin", None)
-        # Explicitly check for presence in validated_data to support partial updates and nulling
-        if "region" in validated_data:
-            region_data = validated_data.pop("region", {})
-            region_uuid = region_data.get("uuid", None) if region_data else None
-            if region_uuid:
-                instance.region = Region.objects.filter(uuid=region_uuid).first()
-            else:
-                instance.region = None
-
-        if "district" in validated_data:
-            district_data = validated_data.pop("district", {})
-            district_uuid = district_data.get("uuid", None) if district_data else None
-            if district_uuid:
-                instance.district = District.objects.filter(uuid=district_uuid).first()
-            else:
-                instance.district = None
-
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
@@ -97,6 +61,7 @@ class PatientProfileSerializer(serializers.ModelSerializer):
             instance.marital_status,
             instance.region,
             instance.district,
+            instance.ward,
             instance.residence,
         ]
         has_kin = hasattr(instance, "next_of_kin") and instance.next_of_kin.name and instance.next_of_kin.phone
@@ -176,10 +141,13 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
 class DoctorDirectorySerializer(serializers.ModelSerializer):
     user_uuid = serializers.UUIDField(source="user.uuid", read_only=True)
+    first_name = serializers.CharField(source="user.first_name", read_only=True)
+    last_name = serializers.CharField(source="user.last_name", read_only=True)
     name = serializers.CharField(source="user.full_name", read_only=True)
     email = serializers.EmailField(source="user.email", read_only=True)
     phone = serializers.CharField(source="user.phone", read_only=True)
     categories = serializers.SerializerMethodField()
+    category_uuids = serializers.SerializerMethodField()
 
     class Meta:
         model = DoctorProfile
@@ -187,15 +155,23 @@ class DoctorDirectorySerializer(serializers.ModelSerializer):
             "uuid",
             "user_uuid",
             "name",
+            "first_name",
+            "last_name",
             "email",
             "phone",
             "license_number",
             "is_available",
+            "consultation_duration",
+            "max_appointments_per_day",
             "categories",
+            "category_uuids",
         )
 
     def get_categories(self, obj):
         return [item.category.name for item in obj.doctorcategory_set.all()]
+
+    def get_category_uuids(self, obj):
+        return [item.category.uuid for item in obj.doctorcategory_set.all()]
 
 
 class AdminOverviewSerializer(serializers.Serializer):
@@ -269,6 +245,16 @@ class AdminDoctorWriteSerializer(serializers.Serializer):
     password = serializers.CharField(min_length=8, style={"input_type": "password"})
     license_number = serializers.CharField(max_length=50)
     is_available = serializers.BooleanField(default=True)
+    consultation_duration = serializers.IntegerField(
+        min_value=5,
+        max_value=240,
+        default=30,
+    )
+    max_appointments_per_day = serializers.IntegerField(
+        min_value=1,
+        required=False,
+        allow_null=True,
+    )
     category_uuids = serializers.ListField(
         child=serializers.UUIDField(),
         required=False,
@@ -292,6 +278,8 @@ class AdminDoctorWriteSerializer(serializers.Serializer):
             user=user,
             license_number=validated_data["license_number"],
             is_available=validated_data["is_available"],
+            consultation_duration=validated_data["consultation_duration"],
+            max_appointments_per_day=validated_data.get("max_appointments_per_day"),
         )
 
         if category_uuids:
@@ -301,3 +289,68 @@ class AdminDoctorWriteSerializer(serializers.Serializer):
             )
 
         return doctor
+
+
+class AdminDoctorUpdateSerializer(serializers.ModelSerializer):
+    first_name = serializers.CharField(max_length=60, required=False)
+    last_name = serializers.CharField(max_length=60, required=False)
+    email = serializers.EmailField(max_length=255, required=False)
+    phone = serializers.CharField(max_length=20, required=False)
+    category_uuids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        write_only=True,
+    )
+
+    class Meta:
+        model = DoctorProfile
+        fields = (
+            "license_number",
+            "is_available",
+            "consultation_duration",
+            "max_appointments_per_day",
+            "category_uuids",
+            "first_name",
+            "last_name",
+            "email",
+            "phone",
+        )
+
+    def validate_email(self, value):
+        queryset = get_user_model().objects.filter(email__iexact=value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.user_id)
+        if queryset.exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return value
+
+    def validate_phone(self, value):
+        queryset = get_user_model().objects.filter(phone=value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.user_id)
+        if queryset.exists():
+            raise serializers.ValidationError("A user with this phone already exists.")
+        return value
+
+    def update(self, instance, validated_data):
+        category_uuids = validated_data.pop("category_uuids", None)
+        user_fields = {
+            field: validated_data.pop(field)
+            for field in ("first_name", "last_name", "email", "phone")
+            if field in validated_data
+        }
+        for field, value in user_fields.items():
+            setattr(instance.user, field, value)
+        if user_fields:
+            instance.user.save(update_fields=[*user_fields, "updated_at"])
+        instance = super().update(instance, validated_data)
+        if category_uuids is not None:
+            categories = IllnessCategory.objects.filter(uuid__in=category_uuids)
+            instance.doctorcategory_set.all().delete()
+            DoctorCategory.objects.bulk_create(
+                [
+                    DoctorCategory(doctor=instance, category=category)
+                    for category in categories
+                ]
+            )
+        return instance

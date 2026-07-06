@@ -48,6 +48,7 @@ class LabRequest(models.Model):
         choices=Status.choices,
         default=Status.PENDING,
     )
+    notes = models.TextField(blank=True)
     requested_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

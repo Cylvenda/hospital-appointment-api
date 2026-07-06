@@ -1,12 +1,24 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
+from django.db import transaction
+from django.utils import timezone
+from datetime import date, datetime, timedelta
 from drf_spectacular.utils import extend_schema, extend_schema_view
 import re
-from api.accounts.models import DoctorProfile
-from api.appointments.models import Appointment, IllnessCategory, Payment
+from api.accounts.models import (
+    DoctorAvailability,
+    DoctorProfile,
+    DoctorUnavailableDate,
+)
+from api.appointments.models import (
+    Appointment,
+    AppointmentQueue,
+    IllnessCategory,
+    Payment,
+)
 from api.appointments.serializers import (
     AppointmentSerializer,
     AppointmentCreateSerializer,
@@ -14,11 +26,15 @@ from api.appointments.serializers import (
     AppointmentPatientUpdateSerializer,
     AppointmentDoctorUpdateSerializer,
     DoctorOptionSerializer,
+    DoctorScheduleSerializer,
+    DoctorUnavailableDateSerializer,
+    AppointmentQueueSerializer,
     IllnessCategorySerializer,
 )
 from api.notifications.services import create_and_send_notification
 from .logs import create_log
 from .services import initiate_payment
+from .scheduling import check_in_appointment, get_available_slots, validate_slot
 
 def _notify(
     *,
@@ -70,15 +86,21 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         user = self.request.user
         role = user.role
         queue_name = self.request.query_params.get("queue")
+        base_queryset = Appointment.objects.select_related(
+            "created_by__patient_profile__next_of_kin",
+            "category",
+            "doctor__user",
+            "payment",
+        )
 
         if role == "patient":
-            queryset = Appointment.objects.filter(created_by=user)
+            queryset = base_queryset.filter(created_by=user)
         elif role == "doctor":
-            queryset = Appointment.objects.filter(doctor__user=user)
+            queryset = base_queryset.filter(doctor__user=user)
         elif role == "receptionist":
-            queryset = Appointment.objects.all()
+            queryset = base_queryset.all()
         elif role == "admin":
-            queryset = Appointment.objects.all()
+            queryset = base_queryset.all()
         else:
             return Appointment.objects.none()
 
@@ -118,15 +140,71 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="doctors")
     def doctors(self, request):
-        if request.user.role not in ["admin", "receptionist"]:
-            raise PermissionDenied("You do not have permission to view doctors")
-
         queryset = (
             DoctorProfile.objects.select_related("user")
-            .filter(is_available=True)
+            .prefetch_related("doctorcategory_set__category")
+            .filter(is_available=True, user__is_active=True)
         )
+        category_uuid = request.query_params.get("category_uuid")
+        if category_uuid:
+            queryset = queryset.filter(
+                doctorcategory__category__uuid=category_uuid
+            )
         serializer = DoctorOptionSerializer(queryset, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="available-days")
+    def available_days(self, request):
+        doctor_uuid = request.query_params.get("doctor_uuid")
+        if not doctor_uuid:
+            raise ValidationError({"doctor_uuid": "Doctor is required."})
+        doctor = DoctorProfile.objects.select_related("user").filter(
+            uuid=doctor_uuid,
+            is_available=True,
+            user__is_active=True,
+        ).first()
+        if not doctor:
+            raise ValidationError({"doctor_uuid": "Doctor was not found."})
+
+        try:
+            days = min(max(int(request.query_params.get("days", 30)), 1), 90)
+            start = date.fromisoformat(
+                request.query_params.get("from", timezone.localdate().isoformat())
+            )
+        except (TypeError, ValueError):
+            raise ValidationError({"date": "Use a valid ISO date."})
+
+        available = []
+        for offset in range(days):
+            candidate = start + timedelta(days=offset)
+            slots = get_available_slots(doctor, candidate)
+            if slots:
+                available.append(
+                    {
+                        "date": candidate,
+                        "slot_count": len(slots),
+                    }
+                )
+        return Response(available)
+
+    @action(detail=False, methods=["get"], url_path="available-slots")
+    def available_slots(self, request):
+        doctor_uuid = request.query_params.get("doctor_uuid")
+        appointment_date = request.query_params.get("date")
+        if not doctor_uuid or not appointment_date:
+            raise ValidationError("Doctor and date are required.")
+        doctor = DoctorProfile.objects.select_related("user").filter(
+            uuid=doctor_uuid,
+            is_available=True,
+            user__is_active=True,
+        ).first()
+        if not doctor:
+            raise ValidationError({"doctor_uuid": "Doctor was not found."})
+        try:
+            selected_date = date.fromisoformat(appointment_date)
+        except ValueError:
+            raise ValidationError({"date": "Use a valid ISO date."})
+        return Response(get_available_slots(doctor, selected_date))
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -197,6 +275,103 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             }
         )
 
+    @action(detail=True, methods=["post"], url_path="mark-paid")
+    def mark_paid(self, request, uuid=None):
+        if request.user.role not in {"admin", "receptionist"}:
+            raise PermissionDenied(
+                "Only admin or reception staff can confirm an offline payment."
+            )
+
+        with transaction.atomic():
+            appointment = (
+                Appointment.objects.select_for_update()
+                .select_related("created_by", "doctor__user")
+                .get(pk=self.get_object().pk)
+            )
+            payment = Payment.objects.select_for_update().get(
+                appointment=appointment
+            )
+
+            if payment.status == Payment.Status.COMPLETED:
+                return Response(
+                    AppointmentSerializer(
+                        appointment,
+                        context={"request": request},
+                    ).data
+                )
+
+            if appointment.status != Appointment.Status.PENDING:
+                raise ValidationError(
+                    "Only a pending appointment can be marked as paid."
+                )
+            if not (
+                appointment.doctor_id
+                and appointment.appointment_date
+                and appointment.start_time
+                and appointment.end_time
+            ):
+                raise ValidationError(
+                    "The appointment must have a doctor and complete time slot."
+                )
+
+            payment_method = request.data.get("payment_method") or "manual"
+            allowed_methods = {
+                "manual",
+                "cash",
+                "mobile_money",
+                "bank_transfer",
+                "insurance",
+            }
+            if (
+                not isinstance(payment_method, str)
+                or payment_method not in allowed_methods
+            ):
+                raise ValidationError(
+                    {"payment_method": "Choose a supported payment method."}
+                )
+            payment.status = Payment.Status.COMPLETED
+            payment.payment_method = payment_method
+            if not payment.transaction_reference:
+                payment.transaction_reference = f"MANUAL-{payment.uuid}"
+            payment.save(
+                update_fields=[
+                    "status",
+                    "payment_method",
+                    "transaction_reference",
+                    "updated_at",
+                ]
+            )
+
+            appointment.status = Appointment.Status.CONFIRMED
+            appointment.save(update_fields=["status", "updated_at"])
+
+            create_log(
+                appointment=appointment,
+                user=request.user,
+                action=f"Payment marked completed manually ({payment_method})",
+            )
+            _notify(
+                user=appointment.created_by,
+                title="Payment Confirmed",
+                message=(
+                    "Hospital staff confirmed your payment. "
+                    "Your appointment is now booked."
+                ),
+                notification_type="payment_success",
+                appointment=appointment,
+                triggered_by=request.user,
+                extra_info=(
+                    "Please arrive before your scheduled time for check-in."
+                ),
+            )
+
+        return Response(
+            AppointmentSerializer(
+                appointment,
+                context={"request": request},
+            ).data
+        )
+
     @action(detail=True, methods=["post"])
     def cancel(self, request, uuid=None):
         appointment = self.get_object()
@@ -238,6 +413,139 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
         return Response(AppointmentSerializer(appointment, context={"request": request}).data)
 
+    @action(detail=True, methods=["post"], url_path="check-in")
+    def check_in(self, request, uuid=None):
+        if request.user.role not in {"admin", "receptionist"}:
+            raise PermissionDenied("Only reception staff can check in patients.")
+        appointment = self.get_object()
+        queue_entry = check_in_appointment(appointment)
+        create_log(
+            appointment,
+            request.user,
+            f"Checked in as queue #{queue_entry.queue_number}",
+        )
+        return Response(
+            AppointmentSerializer(appointment, context={"request": request}).data
+        )
+
+    @action(detail=True, methods=["post"])
+    def reschedule(self, request, uuid=None):
+        if request.user.role not in {"admin", "receptionist"}:
+            raise PermissionDenied("Only admin or reception staff can reschedule.")
+        appointment = self.get_object()
+        if not appointment.doctor:
+            raise ValidationError("A doctor must be assigned before rescheduling.")
+        try:
+            appointment_date = date.fromisoformat(request.data.get("date", ""))
+            start_time = datetime.strptime(
+                request.data.get("start_time", ""),
+                "%H:%M",
+            ).time()
+        except (TypeError, ValueError):
+            raise ValidationError("A valid date and start time are required.")
+        if (
+            appointment.appointment_date == appointment_date
+            and appointment.start_time == start_time
+        ):
+            raise ValidationError("Choose a different appointment slot.")
+
+        selected = validate_slot(appointment.doctor, appointment_date, start_time)
+        old_schedule = f"{appointment.appointment_date} {appointment.start_time}"
+        appointment.appointment_date = appointment_date
+        appointment.preferred_date = appointment_date
+        appointment.start_time = start_time
+        appointment.end_time = datetime.strptime(
+            selected["end_time"],
+            "%H:%M",
+        ).time()
+        appointment.status = Appointment.Status.CONFIRMED
+        appointment.save(
+            update_fields=[
+                "appointment_date",
+                "preferred_date",
+                "start_time",
+                "end_time",
+                "status",
+                "updated_at",
+            ]
+        )
+        AppointmentQueue.objects.filter(appointment=appointment).delete()
+        create_log(
+            appointment,
+            request.user,
+            f"Rescheduled from {old_schedule}",
+        )
+        _notify(
+            user=appointment.created_by,
+            title="Appointment Rescheduled",
+            message="Your appointment has been moved to a new doctor schedule slot.",
+            notification_type="appointment_rescheduled",
+            appointment=appointment,
+            triggered_by=request.user,
+        )
+        return Response(
+            AppointmentSerializer(appointment, context={"request": request}).data
+        )
+
+    @action(detail=True, methods=["post"], url_path="start-consultation")
+    def start_consultation(self, request, uuid=None):
+        if request.user.role != "doctor":
+            raise PermissionDenied("Only the assigned doctor can start consultation.")
+        appointment = self.get_object()
+        if appointment.doctor.user != request.user:
+            raise PermissionDenied("This appointment is assigned to another doctor.")
+        if appointment.status not in {
+            Appointment.Status.WAITING_IN_QUEUE,
+            Appointment.Status.BACK_TO_DOCTOR,
+        }:
+            raise ValidationError("The patient is not ready for consultation.")
+        appointment.status = Appointment.Status.IN_CONSULTATION
+        appointment.save(update_fields=["status", "updated_at"])
+        if hasattr(appointment, "queue_entry"):
+            appointment.queue_entry.called_at = timezone.now()
+            appointment.queue_entry.save(update_fields=["called_at"])
+        create_log(appointment, request.user, "Consultation started")
+        return Response(
+            AppointmentSerializer(appointment, context={"request": request}).data
+        )
+
+    @action(detail=False, methods=["post"], url_path="call-next")
+    def call_next(self, request):
+        if request.user.role != "doctor":
+            raise PermissionDenied("Only doctors can call the next patient.")
+        queue_entry = (
+            AppointmentQueue.objects.select_related("appointment", "doctor__user")
+            .filter(
+                doctor__user=request.user,
+                queue_date=timezone.localdate(),
+                appointment__status=Appointment.Status.WAITING_IN_QUEUE,
+            )
+            .order_by("queue_number")
+            .first()
+        )
+        if not queue_entry:
+            return Response({"detail": "There are no patients waiting."}, status=404)
+        appointment = queue_entry.appointment
+        appointment.status = Appointment.Status.IN_CONSULTATION
+        appointment.save(update_fields=["status", "updated_at"])
+        queue_entry.called_at = timezone.now()
+        queue_entry.save(update_fields=["called_at"])
+        return Response(
+            AppointmentSerializer(appointment, context={"request": request}).data
+        )
+
+    @action(detail=False, methods=["get"], url_path="today-queue")
+    def today_queue(self, request):
+        queryset = AppointmentQueue.objects.select_related(
+            "appointment__created_by",
+            "doctor__user",
+        ).filter(queue_date=timezone.localdate())
+        if request.user.role == "doctor":
+            queryset = queryset.filter(doctor__user=request.user)
+        elif request.user.role not in {"admin", "receptionist"}:
+            raise PermissionDenied("You cannot view today's queue.")
+        return Response(AppointmentQueueSerializer(queryset, many=True).data)
+
     def perform_update(self, serializer):
         old = self.get_object()
         user = self.request.user
@@ -273,7 +581,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 )
                 notification_type = (
                     "appointment_approved"
-                    if updated.status == Appointment.Status.ACCEPTED
+                    if updated.status == Appointment.Status.CONFIRMED
                     else "appointment_cancelled"
                     if updated.status == Appointment.Status.CANCELLED
                     else "appointment_rejected"
@@ -312,23 +620,13 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
         elif role == "doctor":
             if old.status != updated.status:
-                if updated.status == Appointment.Status.ACCEPTED:
-                    create_log(updated, user, "Appointment accepted by doctor")
+                if updated.status == Appointment.Status.CONFIRMED:
+                    create_log(updated, user, "Appointment confirmed")
                     _notify(
                         user=updated.created_by,
                         title="Appointment Accepted",
-                        message="Your doctor has accepted your appointment.",
+                        message="Your appointment has been confirmed.",
                         notification_type="appointment_approved",
-                        appointment=updated,
-                        triggered_by=user,
-                    )
-                elif updated.status == Appointment.Status.DECLINED:
-                    create_log(updated, user, "Appointment declined by doctor")
-                    _notify(
-                        user=updated.created_by,
-                        title="Appointment Declined",
-                        message="Your doctor declined your appointment. Please review the appointment details and book another slot if needed.",
-                        notification_type="appointment_rejected",
                         appointment=updated,
                         triggered_by=user,
                     )
@@ -371,6 +669,59 @@ class IllnessCategoryViewSet(viewsets.ModelViewSet):
         instance.delete()
 
 
+class SchedulePermissionMixin:
+    permission_classes = [IsAuthenticated]
+
+    def _ensure_schedule_manager(self):
+        if self.request.user.role not in {"admin", "receptionist"}:
+            raise PermissionDenied("Only admin or reception staff can manage schedules.")
+
+    def perform_create(self, serializer):
+        self._ensure_schedule_manager()
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._ensure_schedule_manager()
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._ensure_schedule_manager()
+        instance.delete()
+
+
+class DoctorScheduleViewSet(SchedulePermissionMixin, viewsets.ModelViewSet):
+    serializer_class = DoctorScheduleSerializer
+    lookup_field = "uuid"
+    lookup_url_kwarg = "uuid"
+
+    def get_queryset(self):
+        queryset = DoctorAvailability.objects.select_related(
+            "doctor__user"
+        ).order_by("doctor__user__first_name", "day_of_week")
+        doctor_uuid = self.request.query_params.get("doctor_uuid")
+        if doctor_uuid:
+            queryset = queryset.filter(doctor__uuid=doctor_uuid)
+        return queryset
+
+
+class DoctorUnavailableDateViewSet(
+    SchedulePermissionMixin,
+    viewsets.ModelViewSet,
+):
+    serializer_class = DoctorUnavailableDateSerializer
+    lookup_field = "uuid"
+    lookup_url_kwarg = "uuid"
+
+    def get_queryset(self):
+        queryset = DoctorUnavailableDate.objects.select_related(
+            "doctor__user"
+        ).order_by("date")
+        doctor_uuid = self.request.query_params.get("doctor_uuid")
+        if doctor_uuid:
+            queryset = queryset.filter(doctor__uuid=doctor_uuid)
+        return queryset
+
+
 @api_view(["POST"])
 def clickpesa_webhook(request):
     data = request.data
@@ -407,6 +758,14 @@ def clickpesa_webhook(request):
                     event_data.get("channel") or payment.payment_method
                 )
                 payment.save(update_fields=["status", "payment_method", "updated_at"])
+                if (
+                    appointment.doctor_id
+                    and appointment.appointment_date
+                    and appointment.start_time
+                    and appointment.status == Appointment.Status.PENDING
+                ):
+                    appointment.status = Appointment.Status.CONFIRMED
+                    appointment.save(update_fields=["status", "updated_at"])
                 create_log(appointment, None, f"Payment completed ({order_ref})")
                 _notify(
                     user=appointment.created_by,
@@ -419,12 +778,20 @@ def clickpesa_webhook(request):
                 )
                 processed += 1
         elif event in {"PAYMENT FAILED", "FAILED"}:
-            if payment.status != Payment.Status.FAILED:
+            # A delayed gateway failure must never reverse a payment that was
+            # already confirmed by the gateway or hospital staff.
+            if payment.status not in {
+                Payment.Status.FAILED,
+                Payment.Status.COMPLETED,
+            }:
                 payment.status = Payment.Status.FAILED
                 payment.payment_method = (
                     event_data.get("channel") or payment.payment_method
                 )
                 payment.save(update_fields=["status", "payment_method", "updated_at"])
+                if appointment.status == Appointment.Status.PENDING:
+                    appointment.status = Appointment.Status.CANCELLED
+                    appointment.save(update_fields=["status", "updated_at"])
                 detail = f": {gateway_message}" if gateway_message else ""
                 create_log(appointment, None, f"Payment failed ({order_ref}){detail}")
                 _notify(

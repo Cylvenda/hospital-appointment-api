@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     AdminDoctorsListView,
+    AdminDoctorDetailView,
     AdminOverviewView,
     AdminSettingsView,
     AdminUserDetailView,
@@ -9,8 +10,6 @@ from .views import (
     CustomeTokenVerifyView,
     CustomeTokenRefreshView,
     LogoutView,
-    RegionListView,
-    DistrictListView,
     ReportGenerationView,
 )
 
@@ -23,8 +22,11 @@ urlpatterns = [
     path("admin/users/", AdminUsersListView.as_view(), name="admin-users"),
     path("admin/users/<uuid:uuid>/", AdminUserDetailView.as_view(), name="admin-user-detail"),
     path("admin/doctors/", AdminDoctorsListView.as_view(), name="admin-doctors"),
+    path(
+        "admin/doctors/<uuid:uuid>/",
+        AdminDoctorDetailView.as_view(),
+        name="admin-doctor-detail",
+    ),
     path("admin/settings/", AdminSettingsView.as_view(), name="admin-settings"),
     path("me/report/export/", ReportGenerationView.as_view(), name="me-report-export"),
-    path("regions/", RegionListView.as_view(), name="region-list"),
-    path("districts/", DistrictListView.as_view(), name="district-list"),
 ]

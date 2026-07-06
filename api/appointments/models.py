@@ -20,23 +20,61 @@ class IllnessCategory(models.Model):
 class Appointment(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
-        ACCEPTED = "accepted", "Accepted"
-        DECLINED = "declined", "Declined"
+        CONFIRMED = "confirmed", "Confirmed"
+        CHECKED_IN = "checked_in", "Checked In"
+        WAITING_IN_QUEUE = "waiting_in_queue", "Waiting in Queue"
+        IN_CONSULTATION = "in_consultation", "In Consultation"
+        WAITING_FOR_LABORATORY = "waiting_for_laboratory", "Waiting for Laboratory"
+        LABORATORY_IN_PROGRESS = "laboratory_in_progress", "Laboratory In Progress"
+        LABORATORY_RESULTS_READY = "laboratory_results_ready", "Laboratory Results Ready"
+        BACK_TO_DOCTOR = "back_to_doctor", "Back to Doctor"
         CANCELLED = "cancelled", "Cancelled"
-        EXPIRED = "expired", "Expired"
+        NO_SHOW = "no_show", "No Show"
+        RESCHEDULED = "rescheduled", "Rescheduled"
         COMPLETED = "completed", "Completed"
 
     ROLE_STATUS_TRANSITIONS = {
         "admin": {
-            Status.PENDING: {Status.ACCEPTED, Status.DECLINED, Status.CANCELLED},
-            Status.ACCEPTED: {Status.COMPLETED, Status.DECLINED, Status.CANCELLED},
+            Status.PENDING: {Status.CONFIRMED, Status.CANCELLED},
+            Status.CONFIRMED: {
+                Status.CHECKED_IN,
+                Status.NO_SHOW,
+                Status.RESCHEDULED,
+                Status.CANCELLED,
+            },
+            Status.CHECKED_IN: {Status.WAITING_IN_QUEUE, Status.CANCELLED},
+            Status.WAITING_IN_QUEUE: {Status.IN_CONSULTATION, Status.NO_SHOW},
+            Status.IN_CONSULTATION: {
+                Status.WAITING_FOR_LABORATORY,
+                Status.COMPLETED,
+            },
+            Status.BACK_TO_DOCTOR: {
+                Status.IN_CONSULTATION,
+                Status.WAITING_FOR_LABORATORY,
+                Status.COMPLETED,
+            },
         },
         "receptionist": {
-            Status.PENDING: {Status.ACCEPTED, Status.DECLINED, Status.CANCELLED},
-            Status.ACCEPTED: {Status.COMPLETED, Status.DECLINED, Status.CANCELLED},
+            Status.PENDING: {Status.CONFIRMED, Status.CANCELLED},
+            Status.CONFIRMED: {
+                Status.CHECKED_IN,
+                Status.NO_SHOW,
+                Status.RESCHEDULED,
+                Status.CANCELLED,
+            },
+            Status.CHECKED_IN: {Status.WAITING_IN_QUEUE, Status.CANCELLED},
         },
         "doctor": {
-            Status.ACCEPTED: {Status.COMPLETED, Status.DECLINED, Status.CANCELLED},
+            Status.WAITING_IN_QUEUE: {Status.IN_CONSULTATION},
+            Status.IN_CONSULTATION: {
+                Status.WAITING_FOR_LABORATORY,
+                Status.COMPLETED,
+            },
+            Status.BACK_TO_DOCTOR: {
+                Status.IN_CONSULTATION,
+                Status.WAITING_FOR_LABORATORY,
+                Status.COMPLETED,
+            },
         },
         "patient": {},
     }
@@ -51,16 +89,17 @@ class Appointment(models.Model):
         "receptionist": {
             "new": "New Appointments",
             "awaiting-payment": "Awaiting Payment",
-            "awaiting-doctor-assignment": "Awaiting Doctor Assignment",
+            "awaiting-doctor-assignment": "Booking Confirmation",
             "today": "Today's Schedule",
             "checked-in": "Checked-In Patients",
             "completed": "Completed",
             "cancelled": "Cancelled",
         },
         "doctor": {
-            "assigned": "Assigned Patients",
-            "waiting-for-consultation": "Waiting for Consultation",
+            "assigned": "Today's Queue",
+            "waiting-for-consultation": "Waiting in Queue",
             "in-consultation": "In Consultation",
+            "waiting-for-doctor-review": "Waiting for Doctor Review",
             "completed": "Completed Consultations",
         },
         "patient": {
@@ -93,7 +132,7 @@ class Appointment(models.Model):
     appointment_date = models.DateField(blank=True, null=True)
     start_time = models.TimeField(blank=True, null=True)
     end_time = models.TimeField(blank=True, null=True)
-    status = models.CharField(max_length=20, choices=Status, default=Status.PENDING)
+    status = models.CharField(max_length=32, choices=Status, default=Status.PENDING)
     cancel_reason = models.TextField(null=True, blank=True)
     description = models.TextField(blank=True, null=True)
     diagnosis = models.TextField(blank=True, null=True)
@@ -172,12 +211,26 @@ class Appointment(models.Model):
                     payment__status=Payment.Status.COMPLETED,
                 )
             if queue_name == "today":
-                return queryset.filter(appointment_date=today, status=cls.Status.ACCEPTED)
+                return queryset.filter(
+                    appointment_date=today,
+                    status__in=[
+                        cls.Status.CONFIRMED,
+                        cls.Status.CHECKED_IN,
+                        cls.Status.WAITING_IN_QUEUE,
+                        cls.Status.IN_CONSULTATION,
+                        cls.Status.WAITING_FOR_LABORATORY,
+                        cls.Status.LABORATORY_IN_PROGRESS,
+                        cls.Status.BACK_TO_DOCTOR,
+                    ],
+                )
             if queue_name == "checked-in":
                 return queryset.filter(
                     appointment_date=today,
-                    status=cls.Status.ACCEPTED,
-                    start_time__lte=current_time,
+                    status__in=[
+                        cls.Status.CHECKED_IN,
+                        cls.Status.WAITING_IN_QUEUE,
+                        cls.Status.IN_CONSULTATION,
+                    ],
                 )
             if queue_name == "completed":
                 return queryset.filter(status=cls.Status.COMPLETED)
@@ -187,25 +240,37 @@ class Appointment(models.Model):
 
         if role == "doctor":
             if queue_name == "assigned":
-                return queryset.filter(status=cls.Status.ACCEPTED)
+                return queryset.filter(
+                    status__in=[
+                        cls.Status.CONFIRMED,
+                        cls.Status.WAITING_IN_QUEUE,
+                        cls.Status.IN_CONSULTATION,
+                        cls.Status.BACK_TO_DOCTOR,
+                    ]
+                )
             if queue_name == "waiting-for-consultation":
                 return queryset.filter(
-                    status=cls.Status.ACCEPTED,
-                    appointment_date__gt=today,
+                    status=cls.Status.WAITING_IN_QUEUE,
+                    appointment_date=today,
                 )
             if queue_name == "in-consultation":
-                return queryset.filter(
-                    status=cls.Status.ACCEPTED,
-                    appointment_date=today,
-                    start_time__lte=current_time,
-                )
+                return queryset.filter(status=cls.Status.IN_CONSULTATION)
+            if queue_name == "waiting-for-doctor-review":
+                return queryset.filter(status=cls.Status.BACK_TO_DOCTOR)
             if queue_name == "completed":
                 return queryset.filter(status=cls.Status.COMPLETED)
             return queryset
 
         if role == "patient":
             if queue_name == "upcoming":
-                return queryset.filter(status__in=[cls.Status.PENDING, cls.Status.ACCEPTED])
+                return queryset.exclude(
+                    status__in=[
+                        cls.Status.COMPLETED,
+                        cls.Status.CANCELLED,
+                        cls.Status.NO_SHOW,
+                        cls.Status.RESCHEDULED,
+                    ]
+                )
             if queue_name == "completed":
                 return queryset.filter(status=cls.Status.COMPLETED)
             if queue_name == "cancelled":
@@ -230,29 +295,29 @@ class Appointment(models.Model):
         if status == cls.Status.PENDING:
             if payment_status == "completed":
                 if audience in {"patient", "default"}:
-                    return "Awaiting assignment"
-                return "Ready to assign"
+                    return "Confirming booking"
+                return "Payment confirmed"
 
             if audience in {"receptionist", "admin"}:
                 return "Awaiting payment"
 
             return "Waiting for payment"
 
-        if status == cls.Status.ACCEPTED:
+        if status == cls.Status.CONFIRMED:
             if audience == "doctor":
                 return "Ready for review"
             if audience == "patient":
                 return "Scheduled"
-            return "Assigned"
+            return "Scheduled"
 
         if status == cls.Status.COMPLETED:
             return "Completed"
         if status == cls.Status.CANCELLED:
             return "Cancelled"
-        if status == cls.Status.DECLINED:
-            return "Declined"
-        if status == cls.Status.EXPIRED:
-            return "Expired"
+        if status == cls.Status.NO_SHOW:
+            return "No Show"
+        if status == cls.Status.RESCHEDULED:
+            return "Rescheduled"
 
         return status.title() if status else "Unknown"
 
@@ -265,27 +330,27 @@ class Appointment(models.Model):
                 if audience == "doctor":
                     return "The appointment is paid and ready for a clinical review."
                 if audience == "patient":
-                    return "Your payment has been received and the team is assigning a clinician."
-                return "The appointment is paid and ready to be scheduled."
+                    return "Your payment has been received and the booking is being confirmed."
+                return "The appointment is paid and its selected slot is being confirmed."
             if audience == "doctor":
                 return "The appointment is still waiting on payment before it reaches your queue."
             return "The appointment is waiting for payment confirmation."
 
-        if status == cls.Status.ACCEPTED:
+        if status == cls.Status.CONFIRMED:
             if audience == "patient":
-                return "A clinician has been assigned and the visit is scheduled."
+                return "Your selected clinician and visit time are confirmed."
             if audience == "doctor":
                 return "This appointment is assigned to you and ready for assessment."
-            return "The appointment has been assigned and scheduled."
+            return "The appointment is paid and scheduled."
 
         if status == cls.Status.COMPLETED:
             return "The visit is complete and clinical notes are recorded."
         if status == cls.Status.CANCELLED:
             return "The appointment was cancelled and removed from the active queue."
-        if status == cls.Status.DECLINED:
-            return "The appointment was declined and needs a new booking."
-        if status == cls.Status.EXPIRED:
-            return "The appointment expired before it was processed."
+        if status == cls.Status.NO_SHOW:
+            return "The patient did not attend the scheduled appointment."
+        if status == cls.Status.RESCHEDULED:
+            return "The original slot was replaced by a new schedule."
 
         return ""
 
@@ -300,10 +365,40 @@ class AppointmentLog(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True
     )
     action = models.CharField(max_length=255)
-    old_status = models.CharField(max_length=20, blank=True, null=True)
-    new_status = models.CharField(max_length=20, blank=True, null=True)
+    old_status = models.CharField(max_length=32, blank=True, null=True)
+    new_status = models.CharField(max_length=32, blank=True, null=True)
     note = models.TextField(blank=True, null=True)
     timestamp = models.DateTimeField(auto_now_add=True)
+
+
+class AppointmentQueue(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    appointment = models.OneToOneField(
+        Appointment,
+        on_delete=models.CASCADE,
+        related_name="queue_entry",
+    )
+    doctor = models.ForeignKey(
+        "accounts.DoctorProfile",
+        on_delete=models.CASCADE,
+        related_name="queue_entries",
+    )
+    queue_date = models.DateField()
+    queue_number = models.PositiveIntegerField()
+    checked_in_at = models.DateTimeField(default=timezone.now)
+    called_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["queue_date", "doctor", "queue_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["doctor", "queue_date", "queue_number"],
+                name="unique_doctor_daily_queue_number",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.doctor} #{self.queue_number} on {self.queue_date}"
 
 
 class Payment(models.Model):

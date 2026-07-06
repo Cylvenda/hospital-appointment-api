@@ -127,7 +127,7 @@ class LabRequestCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = LabRequest
-        fields = ["status", "items"]
+        fields = ["status", "notes", "items"]
 
 
 class InvoiceItemInputSerializer(serializers.Serializer):

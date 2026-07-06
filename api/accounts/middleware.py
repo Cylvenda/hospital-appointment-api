@@ -10,8 +10,6 @@ class ProfileCompletionMiddleware:
             allowed_prefixes = [
                 "/api/auth/users/me/",
                 "/api/me/auth/logout/",
-                "/api/regions/",
-                "/api/districts/",
             ]
             path = request.path
             

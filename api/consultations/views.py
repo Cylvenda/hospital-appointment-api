@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -21,6 +22,7 @@ from api.medical_records.models import Diagnosis
 from api.prescriptions.models import Prescription, PrescriptionItem
 from api.laboratory.models import LabRequest, LabRequestItem
 from api.billing.models import Invoice, InvoiceItem
+from .report_generator import generate_encounter_docx, generate_encounter_pdf
 
 
 class ConsultationViewSet(viewsets.ModelViewSet):
@@ -71,6 +73,7 @@ class ConsultationViewSet(viewsets.ModelViewSet):
             title=title,
             message=message,
             notification_type=notification_type,
+            appointment=consultation.appointment,
             triggered_by=self.request.user,
             extra_info=extra_info,
             send_email=True,
@@ -91,14 +94,31 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         if getattr(self.request.user, "role", None) not in {"admin", "receptionist", "doctor"}:
             raise PermissionDenied("You do not have permission to perform this consultation action.")
 
+    def _ensure_assigned_doctor(self, consultation):
+        role = getattr(self.request.user, "role", None)
+        if role == "admin":
+            return
+        doctor = self._resolve_doctor(consultation)
+        if role != "doctor" or not doctor or doctor.user != self.request.user:
+            raise PermissionDenied("Only the assigned doctor can perform this action.")
+
     @action(detail=True, methods=["post"])
     def start(self, request, uuid=None):
         self._ensure_clinician_role()
         consultation = self.get_object()
+        self._ensure_assigned_doctor(consultation)
 
         if consultation.status != Consultation.Status.IN_PROGRESS:
             consultation.status = Consultation.Status.IN_PROGRESS
             consultation.save(update_fields=["status", "updated_at"])
+
+        appointment = consultation.appointment
+        if appointment.status in {
+            appointment.Status.WAITING_IN_QUEUE,
+            appointment.Status.BACK_TO_DOCTOR,
+        }:
+            appointment.status = appointment.Status.IN_CONSULTATION
+            appointment.save(update_fields=["status", "updated_at"])
 
         self._notify_patient(
             consultation,
@@ -113,6 +133,14 @@ class ConsultationViewSet(viewsets.ModelViewSet):
     def complete(self, request, uuid=None):
         self._ensure_clinician_role()
         consultation = self.get_object()
+        self._ensure_assigned_doctor(consultation)
+
+        if consultation.lab_requests.exclude(
+            status=LabRequest.Status.COMPLETED
+        ).exists():
+            raise ValidationError(
+                {"detail": "Consultation cannot be completed while laboratory work is pending."}
+            )
 
         consultation.status = Consultation.Status.COMPLETED
         consultation.completed_at = consultation.completed_at or timezone.now()
@@ -130,6 +158,32 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         )
 
         return Response({"detail": "Consultation completed."}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"], url_path="export")
+    def export_record(self, request, uuid=None):
+        consultation = self.get_object()
+        format_type = request.query_params.get("file_format", "pdf").lower()
+
+        if format_type == "pdf":
+            buffer = generate_encounter_pdf(consultation)
+            response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+            extension = "pdf"
+        elif format_type == "docx":
+            buffer = generate_encounter_docx(consultation)
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+            extension = "docx"
+        else:
+            raise ValidationError(
+                {"detail": "Invalid format. Supported formats are 'pdf' and 'docx'."}
+            )
+
+        response["Content-Disposition"] = (
+            f'attachment; filename="clinical_record_{consultation.appointment.uuid}.{extension}"'
+        )
+        return response
 
     @action(detail=True, methods=["post"], url_path="diagnoses")
     def add_diagnosis(self, request, uuid=None):
@@ -205,6 +259,7 @@ class ConsultationViewSet(viewsets.ModelViewSet):
     def create_lab_request(self, request, uuid=None):
         self._ensure_clinician_role()
         consultation = self.get_object()
+        self._ensure_assigned_doctor(consultation)
         serializer = LabRequestCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -217,12 +272,18 @@ class ConsultationViewSet(viewsets.ModelViewSet):
                 doctor=self._resolve_doctor(consultation),
                 patient=patient,
                 status=serializer.validated_data.get("status", LabRequest.Status.PENDING),
+                notes=serializer.validated_data.get("notes", ""),
             )
             for item_data in serializer.validated_data.get("items", []):
                 LabRequestItem.objects.create(
                     lab_request=lab_request,
                     **item_data,
                 )
+
+            consultation.appointment.status = (
+                consultation.appointment.Status.WAITING_FOR_LABORATORY
+            )
+            consultation.appointment.save(update_fields=["status", "updated_at"])
 
         self._notify_patient(
             consultation,

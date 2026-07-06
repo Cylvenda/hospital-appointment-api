@@ -58,6 +58,7 @@ class LabRequestSerializer(serializers.ModelSerializer):
             "patient_uuid",
             "patient_name",
             "status",
+            "notes",
             "requested_at",
             "updated_at",
             "items",
@@ -92,6 +93,7 @@ class LabRequestWriteSerializer(serializers.ModelSerializer):
             "doctor_uuid",
             "patient_uuid",
             "status",
+            "notes",
         ]
 
 

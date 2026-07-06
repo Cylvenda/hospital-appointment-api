@@ -14,17 +14,16 @@ from django.http import HttpResponse
 from rest_framework.response import Response
 from api.appointments.models import Appointment
 from api.notifications.models import Notification
-from .models import SystemSettings, DoctorProfile, User, Region, District
+from .models import SystemSettings, DoctorProfile, User
 from .report_generator import generate_general_docx_report, generate_general_pdf_report
 from .serializers import (
     AdminDoctorWriteSerializer,
+    AdminDoctorUpdateSerializer,
     AdminOverviewSerializer,
     AdminSettingsSerializer,
     AdminUserSerializer,
     AdminUserWriteSerializer,
     DoctorDirectorySerializer,
-    RegionSerializer,
-    DistrictSerializer,
 )
 
 
@@ -136,7 +135,7 @@ class AdminOverviewView(GenericAPIView):
                 status=Appointment.Status.PENDING
             ).count(),
             "approved_appointments": Appointment.objects.filter(
-                status=Appointment.Status.ACCEPTED
+                status=Appointment.Status.CONFIRMED
             ).count(),
             "cancelled_appointments": Appointment.objects.filter(
                 status=Appointment.Status.CANCELLED
@@ -183,6 +182,10 @@ class AdminUserDetailView(GenericAPIView):
     def get_object(self, uuid):
         return get_object_or_404(User, uuid=uuid)
 
+    def get(self, request, uuid, *args, **kwargs):
+        user = self.get_object(uuid)
+        return Response(AdminUserSerializer(user).data, status=status.HTTP_200_OK)
+
     def patch(self, request, uuid, *args, **kwargs):
         user = self.get_object(uuid)
         serializer = self.get_serializer(user, data=request.data, partial=True)
@@ -218,6 +221,27 @@ class AdminDoctorsListView(ListAPIView):
         serializer.is_valid(raise_exception=True)
         doctor = serializer.save()
         return Response(DoctorDirectorySerializer(doctor).data, status=status.HTTP_201_CREATED)
+
+
+class AdminDoctorDetailView(GenericAPIView):
+    serializer_class = AdminDoctorUpdateSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrReceptionist]
+
+    def get_object(self, uuid):
+        return get_object_or_404(
+            DoctorProfile.objects.select_related("user"),
+            uuid=uuid,
+        )
+
+    def patch(self, request, uuid, *args, **kwargs):
+        doctor = self.get_object(uuid)
+        serializer = self.get_serializer(doctor, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            DoctorDirectorySerializer(doctor).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class AdminSettingsView(GenericAPIView):
@@ -265,24 +289,6 @@ class AdminSettingsView(GenericAPIView):
         }
         return Response(self.get_serializer(payload).data, status=status.HTTP_200_OK)
 
-
-class RegionListView(ListAPIView):
-    queryset = Region.objects.all().order_by("name")
-    serializer_class = RegionSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-
-class DistrictListView(ListAPIView):
-    queryset = District.objects.all().order_by("name")
-    serializer_class = DistrictSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        region_uuid = self.request.query_params.get("region_uuid")
-        if region_uuid:
-            queryset = queryset.filter(region__uuid=region_uuid)
-        return queryset
 
 class ReportGenerationView(APIView):
     permission_classes = [permissions.IsAuthenticated]
