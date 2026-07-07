@@ -35,7 +35,7 @@ class EducationalContentListSerializer(serializers.ModelSerializer):
         model = EducationalContent
         fields = [
             "uuid", "title", "slug", "summary", "category", 
-            "tags", "author_name", "featured_image", 
+            "tags", "author_name", "featured_image", "video_file",
             "content_type", "status", "published_at", "created_at"
         ]
 
@@ -61,7 +61,7 @@ class EducationalContentDetailSerializer(serializers.ModelSerializer):
         model = EducationalContent
         fields = [
             "uuid", "title", "slug", "summary", "content", "category", 
-            "tags", "author_name", "featured_image", 
+            "tags", "author_name", "featured_image", "video_file",
             "content_type", "status", "published_at", "created_at", "updated_at"
         ]
 
@@ -77,7 +77,7 @@ class EducationalContentCreateUpdateSerializer(serializers.ModelSerializer):
         model = EducationalContent
         fields = [
             "title", "summary", "content", "category_uuid", 
-            "tag_uuids", "featured_image", "content_type", "status", "published_at"
+            "tag_uuids", "featured_image", "video_file", "content_type", "status", "published_at"
         ]
 
     def to_representation(self, instance):

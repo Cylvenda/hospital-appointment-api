@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from django.conf import settings
+from django.core.validators import FileExtensionValidator
 from django.utils.text import slugify
 from django.utils import timezone
 
@@ -47,6 +48,12 @@ class EducationalContent(models.Model):
     tags = models.ManyToManyField(ContentTag, blank=True, related_name="contents")
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="authored_contents")
     featured_image = models.ImageField(upload_to="health_education/images/", blank=True, null=True)
+    video_file = models.FileField(
+        upload_to="health_education/videos/",
+        validators=[FileExtensionValidator(allowed_extensions=["mp4", "mov", "webm", "m4v"])],
+        blank=True,
+        null=True,
+    )
     content_type = models.CharField(max_length=20, choices=ContentType.choices, default=ContentType.ARTICLE)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     published_at = models.DateTimeField(null=True, blank=True)
