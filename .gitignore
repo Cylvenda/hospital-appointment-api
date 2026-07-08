@@ -22,3 +22,6 @@ staticfiles/
 
 # Logs
 *.log
+
+# Environment variables
+db_password.txt

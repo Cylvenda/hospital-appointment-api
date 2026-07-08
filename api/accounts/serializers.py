@@ -1,5 +1,6 @@
 from djoser.serializers import UserSerializer
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError
 from rest_framework import serializers
 from api.appointments.models import IllnessCategory
 from .models import DoctorCategory, DoctorProfile, PatientProfile, NextOfKin
@@ -64,8 +65,12 @@ class PatientProfileSerializer(serializers.ModelSerializer):
             instance.ward,
             instance.residence,
         ]
-        has_kin = hasattr(instance, "next_of_kin") and instance.next_of_kin.name and instance.next_of_kin.phone
-        
+        has_kin = (
+            hasattr(instance, "next_of_kin")
+            and instance.next_of_kin.name
+            and instance.next_of_kin.phone
+        )
+
         if all(required_fields) and has_kin:
             instance.is_profile_complete = True
         else:
@@ -98,7 +103,7 @@ class CustomUserSerializer(UserSerializer):
 
     def update(self, instance, validated_data):
         profile_data = validated_data.pop("patient_profile", None)
-        
+
         # Update user fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -193,7 +198,9 @@ class AdminSettingsSerializer(serializers.Serializer):
     support_email = serializers.CharField()
     clinic_hours = serializers.CharField()
     default_time_slot = serializers.CharField()
-    appointment_fee = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0)
+    appointment_fee = serializers.DecimalField(
+        max_digits=10, decimal_places=2, min_value=0
+    )
     secure_sessions = serializers.BooleanField()
     patient_confirmation_emails = serializers.BooleanField()
 
@@ -222,6 +229,22 @@ class AdminUserWriteSerializer(serializers.ModelSerializer):
         if self.instance is None and not attrs.get("password"):
             raise serializers.ValidationError({"password": "This field is required."})
         return attrs
+
+    def validate_email(self, value):
+        queryset = get_user_model().objects.filter(email__iexact=value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return value
+
+    def validate_phone(self, value):
+        queryset = get_user_model().objects.filter(phone=value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("A user with this phone already exists.")
+        return value
 
     def create(self, validated_data):
         password = validated_data.pop("password")
@@ -261,31 +284,76 @@ class AdminDoctorWriteSerializer(serializers.Serializer):
         allow_empty=True,
     )
 
+    def validate_email(self, value):
+        if get_user_model().objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return value
+
+    def validate_phone(self, value):
+        if get_user_model().objects.filter(phone=value).exists():
+            raise serializers.ValidationError("A user with this phone already exists.")
+        return value
+
+    def validate_license_number(self, value):
+        if DoctorProfile.objects.filter(license_number__iexact=value).exists():
+            raise serializers.ValidationError(
+                "A doctor with this license number already exists."
+            )
+        return value
+
     def create(self, validated_data):
         category_uuids = validated_data.pop("category_uuids", [])
         password = validated_data.pop("password")
-        user = get_user_model().objects.create_user(
-            email=validated_data["email"],
-            phone=validated_data["phone"],
-            password=password,
-            first_name=validated_data["first_name"],
-            last_name=validated_data["last_name"],
-            role="doctor",
-            is_staff=True,
-            is_active=True,
-        )
-        doctor = DoctorProfile.objects.create(
-            user=user,
-            license_number=validated_data["license_number"],
-            is_available=validated_data["is_available"],
-            consultation_duration=validated_data["consultation_duration"],
-            max_appointments_per_day=validated_data.get("max_appointments_per_day"),
-        )
+        user = None
+        try:
+            user = get_user_model().objects.create_user(
+                email=validated_data["email"],
+                phone=validated_data["phone"],
+                password=password,
+                first_name=validated_data["first_name"],
+                last_name=validated_data["last_name"],
+                role="doctor",
+                is_staff=True,
+                is_active=True,
+            )
+            doctor = DoctorProfile.objects.create(
+                user=user,
+                license_number=validated_data["license_number"],
+                is_available=validated_data["is_available"],
+                consultation_duration=validated_data["consultation_duration"],
+                max_appointments_per_day=validated_data.get("max_appointments_per_day"),
+            )
+        except IntegrityError as exc:
+            if user is not None:
+                user.delete()
+            message = str(exc)
+            if "accounts_user.email" in message:
+                raise serializers.ValidationError(
+                    {"email": "A user with this email already exists."}
+                ) from exc
+            if "accounts_user.phone" in message:
+                raise serializers.ValidationError(
+                    {"phone": "A user with this phone already exists."}
+                ) from exc
+            if "accounts_doctorprofile.license_number" in message:
+                raise serializers.ValidationError(
+                    {
+                        "license_number": (
+                            "A doctor with this license number already exists."
+                        )
+                    }
+                ) from exc
+            raise serializers.ValidationError(
+                "Unable to create doctor because one or more unique fields already exist."
+            ) from exc
 
         if category_uuids:
             categories = IllnessCategory.objects.filter(uuid__in=category_uuids)
             DoctorCategory.objects.bulk_create(
-                [DoctorCategory(doctor=doctor, category=category) for category in categories]
+                [
+                    DoctorCategory(doctor=doctor, category=category)
+                    for category in categories
+                ]
             )
 
         return doctor

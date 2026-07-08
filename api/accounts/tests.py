@@ -106,3 +106,167 @@ class DoctorProfileManagementTests(TestCase):
         doctor.user.refresh_from_db()
         self.assertEqual(doctor.user.first_name, "Updated")
         self.assertEqual(doctor.doctorcategory_set.count(), 2)
+
+    def test_admin_cannot_create_doctor_with_existing_email(self):
+        receptionist = User.objects.create_user(
+            email="reception@example.com",
+            phone="+255700000010",
+            password="StrongPass123!",
+            role=User.Role.RECEPTIONIST,
+        )
+        User.objects.create_user(
+            email="doctor@example.com",
+            phone="+255700000011",
+            password="StrongPass123!",
+            role=User.Role.DOCTOR,
+        )
+        client = APIClient()
+        client.force_authenticate(user=receptionist)
+
+        response = client.post(
+            "/api/admin/doctors/",
+            {
+                "first_name": "New",
+                "last_name": "Doctor",
+                "email": "doctor@example.com",
+                "phone": "+255700000012",
+                "password": "StrongPass123!",
+                "license_number": "DOC-NEW",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("email", response.data)
+
+    def test_admin_cannot_create_doctor_with_existing_phone(self):
+        receptionist = User.objects.create_user(
+            email="reception@example.com",
+            phone="+255700000010",
+            password="StrongPass123!",
+            role=User.Role.RECEPTIONIST,
+        )
+        User.objects.create_user(
+            email="other-doctor@example.com",
+            phone="+255700000011",
+            password="StrongPass123!",
+            role=User.Role.DOCTOR,
+        )
+        client = APIClient()
+        client.force_authenticate(user=receptionist)
+
+        response = client.post(
+            "/api/admin/doctors/",
+            {
+                "first_name": "New",
+                "last_name": "Doctor",
+                "email": "new-doctor@example.com",
+                "phone": "+255700000011",
+                "password": "StrongPass123!",
+                "license_number": "DOC-NEW",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("phone", response.data)
+
+    def test_admin_cannot_create_doctor_with_existing_license_number(self):
+        receptionist = User.objects.create_user(
+            email="reception@example.com",
+            phone="+255700000010",
+            password="StrongPass123!",
+            role=User.Role.RECEPTIONIST,
+        )
+        existing_user = User.objects.create_user(
+            email="doctor@example.com",
+            phone="+255700000011",
+            password="StrongPass123!",
+            role=User.Role.DOCTOR,
+        )
+        DoctorProfile.objects.create(
+            user=existing_user,
+            license_number="DOC-EXISTING",
+        )
+        client = APIClient()
+        client.force_authenticate(user=receptionist)
+
+        response = client.post(
+            "/api/admin/doctors/",
+            {
+                "first_name": "New",
+                "last_name": "Doctor",
+                "email": "new-doctor@example.com",
+                "phone": "+255700000012",
+                "password": "StrongPass123!",
+                "license_number": "DOC-EXISTING",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("license_number", response.data)
+
+    def test_admin_cannot_create_receptionist_with_existing_email(self):
+        receptionist = User.objects.create_user(
+            email="reception@example.com",
+            phone="+255700000010",
+            password="StrongPass123!",
+            role=User.Role.RECEPTIONIST,
+        )
+        User.objects.create_user(
+            email="exists@example.com",
+            phone="+255700000011",
+            password="StrongPass123!",
+            role=User.Role.RECEPTIONIST,
+        )
+        client = APIClient()
+        client.force_authenticate(user=receptionist)
+
+        response = client.post(
+            "/api/admin/users/",
+            {
+                "first_name": "New",
+                "last_name": "Reception",
+                "email": "exists@example.com",
+                "phone": "+255700000012",
+                "password": "StrongPass123!",
+                "role": "receptionist",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("email", response.data)
+
+    def test_admin_cannot_create_receptionist_with_existing_phone(self):
+        receptionist = User.objects.create_user(
+            email="reception@example.com",
+            phone="+255700000010",
+            password="StrongPass123!",
+            role=User.Role.RECEPTIONIST,
+        )
+        User.objects.create_user(
+            email="unique@example.com",
+            phone="+255700000011",
+            password="StrongPass123!",
+            role=User.Role.RECEPTIONIST,
+        )
+        client = APIClient()
+        client.force_authenticate(user=receptionist)
+
+        response = client.post(
+            "/api/admin/users/",
+            {
+                "first_name": "New",
+                "last_name": "Reception",
+                "email": "new@example.com",
+                "phone": "+255700000011",
+                "password": "StrongPass123!",
+                "role": "receptionist",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("phone", response.data)

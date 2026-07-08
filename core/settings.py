@@ -7,6 +7,15 @@ import dj_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def read_secret(var_name, default=None):
+    """Helper to read secret file path from env or fallback to string."""
+    file_path = os.environ.get(var_name)
+    if file_path and os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            return f.read().strip()
+    return default
+
+
 def load_env_file(env_path):
     if not env_path.exists():
         return
@@ -34,13 +43,24 @@ SECRET_KEY = "django-insecure-ztl0+prq)bdb6ey2j*w^i##hyoeqjx_x2whgv$@g4*h(aud(mb
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "backend", "backend:8000", "*"]
 
 
 CORS_ALLOW_CREDENTIALS = True
 
-CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS")
-CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS")
+# Parse CORS origins from environment or use defaults
+_cors_origins = os.getenv("CORS_ALLOWED_ORIGINS")
+CORS_ALLOWED_ORIGINS = (
+    [origin.strip() for origin in _cors_origins.split(",")] if _cors_origins else
+    ["http://localhost:3000", "http://127.0.0.1:3000", "http://frontend:3000"]
+)
+
+# Parse CSRF origins from environment or use defaults
+_csrf_origins = os.getenv("CSRF_TRUSTED_ORIGINS")
+CSRF_TRUSTED_ORIGINS = (
+    [origin.strip() for origin in _csrf_origins.split(",")] if _csrf_origins else
+    ["http://localhost:3000", "http://127.0.0.1:3000", "http://frontend:3000"]
+)
 
 AUTH_COOKIE = "access"
 AUTH_COOKIE_ACCESS_MAX_AGE = 60 * 10  # 10 minutes
@@ -117,6 +137,7 @@ WSGI_APPLICATION = "core.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+
 USE_SQLITE = env_bool("USE_SQLITE", default=not bool(os.getenv("DATABASE_URL")))
 
 if USE_SQLITE:
@@ -128,11 +149,15 @@ if USE_SQLITE:
     }
 else:
     DATABASES = {
-        "default": dj_database_url.config(
-            default=os.environ.get("DATABASE_URL"), conn_max_age=600, ssl_require=True
-        )
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.environ.get("DB_NAME", "example"),
+            "USER": os.environ.get("DB_USER", "postgres"),
+            "PASSWORD": read_secret("DB_PASSWORD_FILE", "my_secure_db_password"),
+            "HOST": os.environ.get("DB_HOST", "db"),
+            "PORT": os.environ.get("DB_PORT", "5432"),
+        }
     }
-    DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
 
 
 # Password validation
@@ -170,6 +195,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
