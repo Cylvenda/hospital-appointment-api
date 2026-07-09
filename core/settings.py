@@ -153,7 +153,7 @@ else:
             "ENGINE": "django.db.backends.postgresql",
             "NAME": os.environ.get("DB_NAME", "example"),
             "USER": os.environ.get("DB_USER", "postgres"),
-            "PASSWORD": read_secret("DB_PASSWORD_FILE", "my_secure_db_password"),
+            "PASSWORD": read_secret("DB_PASSWORD_FILE", "cylvenda"),
             "HOST": os.environ.get("DB_HOST", "db"),
             "PORT": os.environ.get("DB_PORT", "5432"),
         }
