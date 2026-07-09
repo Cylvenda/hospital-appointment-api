@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from core.sanitizer import sanitize_html
 from .models import ContentCategory, ContentTag, EducationalContent, ContentView, ContentBookmark, ContentReaction
 
 class ContentCategorySerializer(serializers.ModelSerializer):
@@ -79,6 +80,9 @@ class EducationalContentCreateUpdateSerializer(serializers.ModelSerializer):
             "title", "summary", "content", "category_uuid", 
             "tag_uuids", "featured_image", "video_file", "content_type", "status", "published_at"
         ]
+
+    def validate_content(self, value):
+        return sanitize_html(value)
 
     def to_representation(self, instance):
         return EducationalContentDetailSerializer(instance, context=self.context).data

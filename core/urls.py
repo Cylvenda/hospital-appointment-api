@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import path, include, re_path
+from rest_framework.permissions import IsAdminUser
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 urlpatterns = [
@@ -12,7 +13,7 @@ urlpatterns = [
     re_path(r"^api/auth/", include("djoser.urls.jwt")),
     # API DOCS ENDPOINTS
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path("", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema", ), name="swagger-ui"),
     # auth cookies based
     path("api/", include("api.accounts.urls")),
     # appointments

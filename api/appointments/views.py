@@ -285,7 +285,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             appointment = (
                 Appointment.objects.select_for_update()
-                .select_related("created_by", "doctor__user")
+                .select_related("created_by")
                 .get(pk=self.get_object().pk)
             )
             payment = Payment.objects.select_for_update().get(

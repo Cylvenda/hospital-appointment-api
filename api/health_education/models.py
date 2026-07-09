@@ -2,8 +2,26 @@ import uuid
 from django.db import models
 from django.conf import settings
 from django.core.validators import FileExtensionValidator
+from django.core.exceptions import ValidationError
 from django.utils.text import slugify
 from django.utils import timezone
+
+
+def validate_media_size(file):
+    max_size = 50 * 1024 * 1024  # 50MB
+    if file.size > max_size:
+        raise ValidationError(f"File too large. Maximum size is {max_size // (1024 * 1024)}MB.")
+
+
+def validate_media_content_type(file):
+    allowed_types = [
+        "image/jpeg", "image/png", "image/gif", "image/webp",
+        "video/mp4", "video/quicktime", "video/webm", "video/x-m4v",
+    ]
+    content_type = getattr(file, "content_type", "")
+    if content_type and content_type not in allowed_types:
+        raise ValidationError(f"Unsupported file type: {content_type}")
+
 
 class ContentCategory(models.Model):
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
@@ -47,10 +65,19 @@ class EducationalContent(models.Model):
     category = models.ForeignKey(ContentCategory, on_delete=models.SET_NULL, null=True, related_name="contents")
     tags = models.ManyToManyField(ContentTag, blank=True, related_name="contents")
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="authored_contents")
-    featured_image = models.ImageField(upload_to="health_education/images/", blank=True, null=True)
+    featured_image = models.ImageField(
+        upload_to="health_education/images/",
+        blank=True,
+        null=True,
+        validators=[validate_media_size, validate_media_content_type],
+    )
     video_file = models.FileField(
         upload_to="health_education/videos/",
-        validators=[FileExtensionValidator(allowed_extensions=["mp4", "mov", "webm", "m4v"])],
+        validators=[
+            FileExtensionValidator(allowed_extensions=["mp4", "mov", "webm", "m4v"]),
+            validate_media_size,
+            validate_media_content_type,
+        ],
         blank=True,
         null=True,
     )

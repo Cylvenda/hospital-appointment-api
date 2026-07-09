@@ -1,5 +1,6 @@
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.conf import settings
+from rest_framework.exceptions import AuthenticationFailed
 
 
 class CustomJWTAuthentication(JWTAuthentication):
@@ -18,6 +19,5 @@ class CustomJWTAuthentication(JWTAuthentication):
             validated_token = self.get_validated_token(raw_token)
 
             return self.get_user(validated_token), validated_token
-        except:
-            return None
-        return super().authenticate(request)
+        except Exception as exc:
+            raise AuthenticationFailed("Invalid token") from exc

@@ -290,6 +290,16 @@ class AdminSettingsView(GenericAPIView):
         return Response(self.get_serializer(payload).data, status=status.HTTP_200_OK)
 
 
+class PublicSystemSettingsView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        system_settings = SystemSettings.get_solo()
+        return Response({
+            "appointment_fee": system_settings.appointment_fee,
+        })
+
+
 class ReportGenerationView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 

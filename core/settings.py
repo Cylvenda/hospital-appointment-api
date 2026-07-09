@@ -38,42 +38,57 @@ def env_bool(name, default=False):
 load_env_file(BASE_DIR / ".env")
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-ztl0+prq)bdb6ey2j*w^i##hyoeqjx_x2whgv$@g4*h(aud(mb"
+SECRET_KEY = os.getenv("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env_bool("DEBUG", default=False)
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "backend", "backend:8000", "*"]
+_raw_hosts = os.getenv("ALLOWED_HOSTS", "")
+ALLOWED_HOSTS = (
+    [host.strip() for host in _raw_hosts.split(",") if host.strip()]
+    if _raw_hosts
+    else ["localhost", "127.0.0.1", "backend"]
+)
 
 
 CORS_ALLOW_CREDENTIALS = True
 
-# Parse CORS origins from environment or use defaults
-_cors_origins = os.getenv("CORS_ALLOWED_ORIGINS")
-CORS_ALLOWED_ORIGINS = (
-    [origin.strip() for origin in _cors_origins.split(",")] if _cors_origins else
-    ["http://localhost:3000", "http://127.0.0.1:3000", "http://frontend:3000"]
-)
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000",
+    ).split(",")
+    if origin.strip()
+]
 
-# Parse CSRF origins from environment or use defaults
-_csrf_origins = os.getenv("CSRF_TRUSTED_ORIGINS")
-CSRF_TRUSTED_ORIGINS = (
-    [origin.strip() for origin in _csrf_origins.split(",")] if _csrf_origins else
-    ["http://localhost:3000", "http://127.0.0.1:3000", "http://frontend:3000"]
-)
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CSRF_TRUSTED_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000",
+    ).split(",")
+    if origin.strip()
+]
+
+CORS_ALLOW_HEADERS = [
+    "authorization",
+    "content-type",
+    "x-csrftoken",
+]
 
 AUTH_COOKIE = "access"
-AUTH_COOKIE_ACCESS_MAX_AGE = 60 * 10  # 10 minutes
-AUTH_COOKIE_REFRESH_MAX_AGE = 60 * 60 * 24  # 24 hrs
-AUTH_COOKIE_SECURE = True  # In development must be true
+AUTH_COOKIE_ACCESS_MAX_AGE = 60 * 10
+AUTH_COOKIE_REFRESH_MAX_AGE = 60 * 60 * 24
+AUTH_COOKIE_SECURE = not DEBUG
 AUTH_COOKIE_HTTP_ONLY = True
 AUTH_COOKIE_PATH = "/"
-AUTH_COOKIE_SAMESITE = "None"
+AUTH_COOKIE_SAMESITE = "Lax"
 
 DOMAIN = os.getenv("DOMAIN")
 SITE_NAME = os.getenv("SITE_NAME")
 
-# Application definition
+# ─── Authentication ───────────────────────────────────────────────────────────
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -151,9 +166,9 @@ else:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
-            "NAME": os.environ.get("DB_NAME", "example"),
+            "NAME": os.environ.get("DB_NAME", "hospital_appointment"),
             "USER": os.environ.get("DB_USER", "postgres"),
-            "PASSWORD": read_secret("DB_PASSWORD_FILE", "cylvenda"),
+            "PASSWORD": read_secret("DB_PASSWORD_FILE") or os.environ.get("DB_PASSWORD", ""),
             "HOST": os.environ.get("DB_HOST", "db"),
             "PORT": os.environ.get("DB_PORT", "5432"),
         }
@@ -208,6 +223,14 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "10/min",
+        "user": "100/min",
+    },
 }
 
 SIMPLE_JWT = {
@@ -216,25 +239,6 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
-
-CORS_ALLOW_CREDENTIALS = True
-
-
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
-
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
-
-CORS_ALLOW_HEADERS = [
-    "authorization",
-    "content-type",
-    "x-csrftoken",
-]
 
 
 # ─── Authentication ───────────────────────────────────────────────────────────
@@ -295,5 +299,23 @@ SPECTACULAR_SETTINGS = {
         "name": "Cylvenda Dev",
         "email": "brayanmlawa0917@gmail.com",
     },
-    "SERVE_INCLUDE_SCHEMA": False,
 }
+
+
+# ─── Security Headers ─────────────────────────────────────────────────────────
+
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+else:
+    SECURE_SSL_REDIRECT = False
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"
