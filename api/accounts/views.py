@@ -305,9 +305,19 @@ class ReportGenerationView(APIView):
 
     def get(self, request, *args, **kwargs):
         format_type = request.query_params.get("format", "pdf").lower()
+        start_date = request.query_params.get("start_date")
+        end_date = request.query_params.get("end_date")
+        
+        data = fetch_report_data(request.user, start_date=start_date, end_date=end_date)
+        
+        if not data.get("has_data"):
+            return Response(
+                {"detail": "No data available for the selected filters. Adjust the date range or try again later."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         if format_type == "docx":
-            buffer = generate_general_docx_report(request.user)
+            buffer = generate_general_docx_report(request.user, start_date=start_date, end_date=end_date)
             response = HttpResponse(
                 buffer, 
                 content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -316,7 +326,7 @@ class ReportGenerationView(APIView):
             return response
             
         elif format_type == "pdf":
-            buffer = generate_general_pdf_report(request.user)
+            buffer = generate_general_pdf_report(request.user, start_date=start_date, end_date=end_date)
             response = HttpResponse(buffer, content_type="application/pdf")
             response["Content-Disposition"] = f'attachment; filename="{request.user.role}_report.pdf"'
             return response

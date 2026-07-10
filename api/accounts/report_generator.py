@@ -11,18 +11,28 @@ from api.appointments.models import Appointment
 from api.laboratory.models import LabRequestItem
 from .models import User
 
-def fetch_report_data(user):
+def fetch_report_data(user, start_date=None, end_date=None):
     data = {"role": user.role, "full_name": user.full_name}
     today = timezone.localdate()
     
+    queryset = Appointment.objects.all()
+    
+    if start_date:
+        queryset = queryset.filter(appointment_date__gte=start_date)
+    if end_date:
+        queryset = queryset.filter(appointment_date__lte=end_date)
+    
+    has_appointments = queryset.exists()
+    
     if user.role in [User.Role.ADMIN, User.Role.RECEPTIONIST]:
         data["title"] = "General System Report"
+        total_qs = queryset
         data["stats"] = {
-            "Total Appointments Today": Appointment.objects.filter(appointment_date=today).count(),
-            "Pending Appointments": Appointment.objects.filter(status=Appointment.Status.PENDING).count(),
-            "Completed Appointments": Appointment.objects.filter(status=Appointment.Status.COMPLETED).count(),
+            "Total Appointments Today": total_qs.filter(appointment_date=today).count(),
+            "Pending Appointments": total_qs.filter(status=Appointment.Status.PENDING).count(),
+            "Completed Appointments": total_qs.filter(status=Appointment.Status.COMPLETED).count(),
         }
-        recent = Appointment.objects.order_by("-created_at")[:10]
+        recent = queryset.order_by("-created_at")[:10]
         data["recent_activities"] = [
             ["Date", "Patient", "Doctor", "Status"],
             *[[a.appointment_date.strftime("%Y-%m-%d"), a.patient.user.full_name if a.patient else "-", a.doctor.user.full_name if a.doctor else "-", a.status] for a in recent]
@@ -30,7 +40,7 @@ def fetch_report_data(user):
         
     elif user.role == User.Role.DOCTOR:
         data["title"] = "Doctor Activities Report"
-        my_appointments = Appointment.objects.filter(doctor__user=user)
+        my_appointments = queryset.filter(doctor__user=user)
         data["stats"] = {
             "My Appointments Today": my_appointments.filter(appointment_date=today).count(),
             "My Pending Appointments": my_appointments.filter(status=Appointment.Status.PENDING).count(),
@@ -44,9 +54,12 @@ def fetch_report_data(user):
         
     elif user.role == User.Role.LAB_TECH:
         data["title"] = "Lab Technician Activities Report"
-        # LabTech doesn't have a direct relation in LabRequest unless verified_by in LabResult
         from api.laboratory.models import LabResult
         my_results = LabResult.objects.filter(verified_by=user)
+        if start_date:
+            my_results = my_results.filter(created_at__date__gte=start_date)
+        if end_date:
+            my_results = my_results.filter(created_at__date__lte=end_date)
         data["stats"] = {
             "Tests Verified Today": my_results.filter(created_at__date=today).count(),
             "Total Tests Verified": my_results.count(),
@@ -60,13 +73,15 @@ def fetch_report_data(user):
         data["title"] = "User Report"
         data["stats"] = {}
         data["recent_activities"] = []
+        has_appointments = False
         
+    data["has_data"] = has_appointments or bool(data.get("stats")) or (data.get("recent_activities") and len(data["recent_activities"]) > 1)
     return data
 
 
-def generate_general_docx_report(user):
+def generate_general_docx_report(user, start_date=None, end_date=None):
     doc = Document()
-    data = fetch_report_data(user)
+    data = fetch_report_data(user, start_date=start_date, end_date=end_date)
 
     heading = doc.add_heading(data["title"], 0)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -106,7 +121,7 @@ def generate_general_docx_report(user):
     return buffer
 
 
-def generate_general_pdf_report(user):
+def generate_general_pdf_report(user, start_date=None, end_date=None):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     elements = []
@@ -116,7 +131,7 @@ def generate_general_pdf_report(user):
     title_style.alignment = 1 # Center
     details_style = styles['Normal']
     
-    data = fetch_report_data(user)
+    data = fetch_report_data(user, start_date=start_date, end_date=end_date)
     
     elements.append(Paragraph(data["title"], title_style))
     elements.append(Spacer(1, 12))
