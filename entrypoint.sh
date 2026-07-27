@@ -10,6 +10,9 @@ done
 echo "Applying migrations..."
 python manage.py migrate --noinput
 
+echo "Ensuring deploy-time superuser exists..."
+python manage.py ensure_superuser --skip-if-unset
+
 echo "Collecting static files..."
 python manage.py collectstatic --noinput || true
 

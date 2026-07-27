@@ -154,7 +154,8 @@ WSGI_APPLICATION = "core.wsgi.application"
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 
-USE_SQLITE = env_bool("USE_SQLITE", default=not bool(os.getenv("DATABASE_URL")))
+DATABASE_URL = os.getenv("DATABASE_URL")
+USE_SQLITE = env_bool("USE_SQLITE", default=not bool(DATABASE_URL))
 
 if USE_SQLITE:
     DATABASES = {
@@ -162,6 +163,14 @@ if USE_SQLITE:
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db.sqlite3",
         }
+    }
+elif DATABASE_URL:
+    DATABASES = {
+        "default": dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
     }
 else:
     DATABASES = {
