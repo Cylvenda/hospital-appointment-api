@@ -1,7 +1,12 @@
 # payments/services.py
 import requests
 from rest_framework.exceptions import ValidationError
-from .payments import BASE_URL, clickpesa_headers, PaymentGatewayError
+from .payments import (
+    BASE_URL,
+    PaymentGatewayError,
+    clickpesa_headers,
+    create_payload_checksum,
+)
 from .models import Payment
 from django.conf import settings
 import uuid
@@ -64,6 +69,7 @@ def initiate_payment(payment: Payment, user, appointment, preffered_phone_number
         "orderReference": order_reference,
         "description": f"Payment for appointment {payment.appointment.uuid}",
     }
+    payload["checksum"] = create_payload_checksum(payload)
     try:
         headers = clickpesa_headers()
         response = requests.post(

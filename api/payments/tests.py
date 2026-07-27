@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import json
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -50,8 +53,10 @@ class PaymentCreateTests(APITestCase):
         Payment.objects.create(appointment=self.appointment, amount=self.appointment.fee)
 
     @patch("api.appointments.services.requests.post")
+    @patch.dict("os.environ", {"CLICKPESA_CHECKSUM_KEY": "test-checksum-key"})
     def test_patient_can_initiate_payment(self, mock_post):
         appointment_id = self.appointment.id
+        initiation_payload = {}
 
         def side_effect(url, **kwargs):
             class R:
@@ -60,6 +65,7 @@ class PaymentCreateTests(APITestCase):
                 def json(self_inner):
                     if "/generate-token" in str(url):
                         return {"token": "fake-token", "access_token": "fake-token"}
+                    initiation_payload.update(kwargs["json"])
                     return {"orderReference": f"PAYID{appointment_id}UUIDABC123"}
 
             return R()
@@ -81,6 +87,16 @@ class PaymentCreateTests(APITestCase):
 
         payment = Payment.objects.get(uuid=response.data["payment_uuid"])
         self.assertEqual(payment.status, Payment.Status.PENDING)
+        checksum = initiation_payload.pop("checksum")
+        canonical_payload = json.dumps(
+            initiation_payload, sort_keys=True, separators=(",", ":")
+        )
+        expected_checksum = hmac.new(
+            b"test-checksum-key",
+            canonical_payload.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        self.assertEqual(checksum, expected_checksum)
 
     @patch("api.appointments.services.requests.post")
     def test_patient_cannot_pay_for_another_appointment(self, mock_post):
