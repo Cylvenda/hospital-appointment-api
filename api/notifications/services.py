@@ -77,9 +77,9 @@ def _build_action_details(triggered_by):
 
 
 def _build_frontend_url():
-    domain = getattr(settings, "DOMAIN", None) or "localhost:3000"
-    protocol = getattr(settings, "EMAIL_FRONTEND_PROTOCOL", None) or "http"
-    return f"{protocol}://{domain}"
+     domain = getattr(settings, "EMAIL_FRONTEND_DOMAIN", None)
+     protocol = getattr(settings, "EMAIL_FRONTEND_PROTOCOL", None) or "https"
+     return f"{protocol}://{domain}"
 
 
 def _build_appointment_reference(appointment):

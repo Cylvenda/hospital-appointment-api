@@ -7,6 +7,7 @@ from rest_framework.test import APITestCase
 
 from api.accounts.models import DoctorAvailability, DoctorCategory, DoctorProfile, SystemSettings
 from api.appointments.models import Appointment, IllnessCategory, Payment
+from api.appointments.payments import PaymentGatewayError
 
 
 @override_settings(DEBUG=True, SECURE_SSL_REDIRECT=False)
@@ -98,6 +99,45 @@ class PaymentCreateTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+    @patch("api.payments.views.initiate_payment")
+    @patch("api.payments.views.send_notification_email")
+    def test_gateway_failure_returns_safe_error_and_emails_superuser(
+        self, send_notification_email, initiate_payment
+    ):
+        superuser = get_user_model().objects.create_superuser(
+            email="system-admin@example.com",
+            phone="255700000098",
+            password="password123",
+        )
+        initiate_payment.side_effect = PaymentGatewayError(
+            {
+                "message": "ClickPesa token request failed.",
+                "status_code": 429,
+                "response": {"message": "Daily API limit reached."},
+            }
+        )
+        self.client.force_authenticate(user=self.patient)
+
+        response = self.client.post(
+            reverse("payment-create"),
+            {
+                "appointment_uuid": str(self.appointment.uuid),
+                "phone": "255700000030",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.data["code"], "payment_temporarily_unavailable")
+        self.assertTrue(response.data["retryable"])
+        self.assertNotIn("ClickPesa", response.data["detail"])
+        send_notification_email.assert_called_once()
+        email_kwargs = send_notification_email.call_args.kwargs
+        self.assertEqual(email_kwargs["recipient_email"], superuser.email)
+        self.assertIn("Payment gateway unavailable", email_kwargs["subject"])
+        self.assertIn(str(self.appointment.uuid), str(email_kwargs["appointment_details"]))
+        self.assertIn("Daily API limit reached", email_kwargs["extra_info"])
 
 
 @override_settings(DEBUG=True, SECURE_SSL_REDIRECT=False)

@@ -6,6 +6,7 @@ import hashlib
 from django.db import transaction
 from django.utils import timezone
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from rest_framework.views import APIView
@@ -20,9 +21,51 @@ from api.payments.models import WebhookAuditLog
 from api.payments.business import confirm_payment, fail_payment, PaymentAlreadyProcessed
 from api.appointments.logs import create_log
 from api.appointments.services import initiate_payment
+from api.appointments.payments import PaymentGatewayError
 from api.notifications.services import create_and_send_notification
+from api.notifications.task import send_notification_email
 
 logger = logging.getLogger(__name__)
+
+
+def _email_superusers_about_gateway_failure(*, appointment, patient, error):
+    """Alert active superusers without exposing gateway details to the patient."""
+    recipients = (
+        get_user_model()
+        .objects.filter(is_superuser=True, is_active=True)
+        .exclude(email="")
+        .values_list("email", flat=True)
+    )
+    appointment_ref = appointment.appointment_id or str(appointment.uuid)
+    patient_ref = patient.email or patient.phone or str(patient.pk)
+    occurred_at = timezone.now().strftime("%Y-%m-%d %H:%M:%S %Z")
+
+    for recipient_email in recipients:
+        try:
+            send_notification_email(
+                subject=f"Payment gateway unavailable - Appointment {appointment_ref}",
+                message=(
+                    "A patient could not initiate an appointment payment because "
+                    "the payment gateway was unavailable."
+                ),
+                recipient_email=recipient_email,
+                extra_info=(
+                    f"Occurred at: {occurred_at}\n"
+                    f"Patient: {patient_ref}\n"
+                    f"Gateway error: {error}"
+                ),
+                appointment_details=[
+                    {"label": "Appointment ID", "value": appointment_ref},
+                    {"label": "Reference UUID", "value": str(appointment.uuid)},
+                    {"label": "Payment Status", "value": appointment.payment.get_status_display()},
+                ],
+                cta_label="Open PAMS",
+            )
+        except Exception:
+            logger.exception(
+                "Could not email superuser %s about payment gateway failure",
+                recipient_email,
+            )
 
 
 class PaymentCreateView(APIView):
@@ -68,6 +111,26 @@ class PaymentCreateView(APIView):
 
         try:
             initiate_payment(payment, request.user, appointment, user_phone)
+        except PaymentGatewayError as exc:
+            logger.exception(
+                "Payment gateway unavailable for appointment %s", appointment_uuid
+            )
+            _email_superusers_about_gateway_failure(
+                appointment=appointment,
+                patient=request.user,
+                error=exc,
+            )
+            return Response(
+                {
+                    "code": "payment_temporarily_unavailable",
+                    "detail": (
+                        "Payment is temporarily unavailable. "
+                        "Your appointment is still saved; please try again later."
+                    ),
+                    "retryable": True,
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         except Exception as exc:
             logger.exception(
                 "Failed to initiate payment for appointment %s", appointment_uuid

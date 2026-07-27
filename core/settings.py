@@ -87,6 +87,8 @@ AUTH_COOKIE_SAMESITE = "Lax"
 
 DOMAIN = os.getenv("DOMAIN")
 SITE_NAME = os.getenv("SITE_NAME")
+EMAIL_FRONTEND_DOMAIN = os.getenv("EMAIL_FRONTEND_DOMAIN", "")
+EMAIL_FRONTEND_PROTOCOL = os.getenv("EMAIL_FRONTEND_PROTOCOL", "https")
 
 # ─── Authentication ───────────────────────────────────────────────────────────
 
@@ -260,24 +262,24 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 DJOSER = {
-    "LOGIN_FIELD": "email",
-    "SEND_ACTIVATION_EMAIL": True,
-    "ACTIVATION_URL": "activate/{uid}/{token}",
-    "PASSWORD_RESET_CONFIRM_URL": "reset/{uid}/{token}",
-    "SERIALIZERS": {
-        "activation": "djoser.serializers.ActivationSerializer",
-        "user": "api.accounts.serializers.CustomUserSerializer",
-        "current_user": "api.accounts.serializers.CustomUserSerializer",
-    },
-    "EMAIL": {
-        "activation": "api.accounts.email.CustomActivationEmail",
-        "confirmation": "api.accounts.email.CustomConfirmationEmail",
-        "password_reset": "api.accounts.email.CustomPasswordResetEmail",
-        "password_changed_confirmation": "api.accounts.email.CustomPasswordChangedConfirmationEmail",
-    },
-    "EMAIL_FRONTEND_DOMAIN": "localhost:3000",
-    "EMAIL_FRONTEND_PROTOCOL": "http",
-    "EMAIL_FRONTEND_SITE_NAME": "Digital Patient Pre-Registration and Appointment Management System",
+     "LOGIN_FIELD": "email",
+     "SEND_ACTIVATION_EMAIL": True,
+     "ACTIVATION_URL": "activate/{uid}/{token}",
+     "PASSWORD_RESET_CONFIRM_URL": "reset/{uid}/{token}",
+     "SERIALIZERS": {
+         "activation": "djoser.serializers.ActivationSerializer",
+         "user": "api.accounts.serializers.CustomUserSerializer",
+         "current_user": "api.accounts.serializers.CustomUserSerializer",
+     },
+     "EMAIL": {
+         "activation": "api.accounts.email.CustomActivationEmail",
+         "confirmation": "api.accounts.email.CustomConfirmationEmail",
+         "password_reset": "api.accounts.email.CustomPasswordResetEmail",
+         "password_changed_confirmation": "api.accounts.email.CustomPasswordChangedConfirmationEmail",
+     },
+     "EMAIL_FRONTEND_DOMAIN": EMAIL_FRONTEND_DOMAIN,
+     "EMAIL_FRONTEND_PROTOCOL": EMAIL_FRONTEND_PROTOCOL,
+     "EMAIL_FRONTEND_SITE_NAME": "Digital Patient Pre-Registration and Appointment Management System",
 }
 
 EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
