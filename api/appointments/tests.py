@@ -233,7 +233,7 @@ class DoctorScheduleAndQueueTests(APITestCase):
         Payment.objects.create(
             appointment=appointment,
             amount=appointment.fee,
-            status=Payment.Status.COMPLETED,
+            status=Payment.Status.SUCCESS,
         )
         self.client.force_authenticate(user=self.doctor_user)
 
@@ -411,7 +411,7 @@ class DoctorScheduleAndQueueTests(APITestCase):
         appointment.refresh_from_db()
         appointment.payment.refresh_from_db()
         self.assertEqual(appointment.status, Appointment.Status.CONFIRMED)
-        self.assertEqual(appointment.payment.status, Payment.Status.COMPLETED)
+        self.assertEqual(appointment.payment.status, Payment.Status.SUCCESS)
         self.assertEqual(appointment.payment.payment_method, "bank_transfer")
 
     def test_patient_cannot_manually_mark_appointment_as_paid(self):

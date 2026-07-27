@@ -47,7 +47,7 @@ _raw_hosts = os.getenv("ALLOWED_HOSTS", "")
 ALLOWED_HOSTS = (
     [host.strip() for host in _raw_hosts.split(",") if host.strip()]
     if _raw_hosts
-    else ["localhost", "127.0.0.1", "backend"]
+    else ["localhost", "127.0.0.1", "backend", "frontend", "testserver", "test"]
 )
 
 
@@ -115,6 +115,7 @@ INSTALLED_APPS = [
     "api.billing",
     "api.pharmacy",
     "api.health_education",
+    "api.payments",
 ]
 
 MIDDLEWARE = [
@@ -281,6 +282,26 @@ if not EMAIL_BACKEND:
         EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
     else:
         EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+
+BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()
+BREVO_SMTP_HOST = os.getenv("BREVO_SMTP_HOST", "smtp-relay.brevo.com")
+BREVO_SMTP_PORT = int(os.getenv("BREVO_SMTP_PORT", "587"))
+BREVO_SMTP_USER = os.getenv("BREVO_SMTP_USER", "").strip()
+BREVO_SMTP_PASSWORD = os.getenv("BREVO_SMTP_PASSWORD", "").strip()
+BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "").strip()
+BREVO_SENDER_NAME = os.getenv("BREVO_SENDER_NAME", SITE_NAME or "PAMS")
+BREVO_EMAIL_TIMEOUT = int(os.getenv("BREVO_EMAIL_TIMEOUT", "10"))
+
+if BREVO_API_KEY or BREVO_SMTP_USER or BREVO_SMTP_PASSWORD:
+    EMAIL_HOST = BREVO_SMTP_HOST
+    EMAIL_PORT = BREVO_SMTP_PORT
+    EMAIL_HOST_USER = BREVO_SMTP_USER
+    EMAIL_HOST_PASSWORD = BREVO_SMTP_PASSWORD
+    EMAIL_USE_TLS = True
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    if BREVO_SENDER_EMAIL:
+        DEFAULT_FROM_EMAIL = f"{BREVO_SENDER_NAME} <{BREVO_SENDER_EMAIL}>"
+
 DEFAULT_FROM_EMAIL = (
     os.getenv("DEFAULT_FROM_EMAIL", "").strip()
     or EMAIL_HOST_USER

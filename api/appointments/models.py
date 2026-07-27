@@ -208,7 +208,7 @@ class Appointment(models.Model):
             if queue_name == "awaiting-doctor-assignment":
                 return queryset.filter(
                     status=cls.Status.PENDING,
-                    payment__status=Payment.Status.COMPLETED,
+                    payment__status=Payment.Status.SUCCESS,
                 )
             if queue_name == "today":
                 return queryset.filter(
@@ -404,8 +404,10 @@ class AppointmentQueue(models.Model):
 class Payment(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
+        SUCCESS = "success", "Success"
         FAILED = "failed", "Failed"
-        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+        EXPIRED = "expired", "Expired"
 
     uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     appointment = models.OneToOneField(
@@ -415,6 +417,10 @@ class Payment(models.Model):
     status = models.CharField(max_length=20, choices=Status, default=Status.PENDING)
     payment_method = models.CharField(max_length=50, blank=True, null=True)
     transaction_reference = models.CharField(max_length=100, blank=True, null=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    gateway_transaction_id = models.CharField(max_length=100, blank=True, null=True)
+    receipt_number = models.CharField(max_length=100, blank=True, null=True)
+    raw_response = models.JSONField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

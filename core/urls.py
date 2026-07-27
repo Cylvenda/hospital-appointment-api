@@ -18,6 +18,8 @@ urlpatterns = [
     path("api/", include("api.accounts.urls")),
     # appointments
     path("api/", include("api.appointments.urls")),
+    # payments
+    path("api/payments/", include("api.payments.urls")),
     # consultations
     path("api/", include("api.consultations.urls")),
     # medical records

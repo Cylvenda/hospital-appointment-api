@@ -338,6 +338,10 @@ class PaymentSerializer(serializers.ModelSerializer):
             "status",
             "payment_method",
             "transaction_reference",
+            "paid_at",
+            "gateway_transaction_id",
+            "receipt_number",
+            "raw_response",
             "created_at",
             "updated_at",
         ]
@@ -347,6 +351,10 @@ class PaymentSerializer(serializers.ModelSerializer):
             "updated_at",
             "status",
             "transaction_reference",
+            "paid_at",
+            "gateway_transaction_id",
+            "receipt_number",
+            "raw_response",
         ]
 
 

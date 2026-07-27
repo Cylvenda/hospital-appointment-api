@@ -6,7 +6,7 @@ from .views import (
     DoctorUnavailableDateViewSet,
     IllnessCategoryViewSet,
 )
-from .views import clickpesa_webhook
+from api.payments.views import payment_webhook
 
 router = DefaultRouter()
 router.register(r"appointments", AppointmentViewSet, basename="appointment")
@@ -21,7 +21,7 @@ router.register(
 )
 
 urlpatterns = [
-    path("webhooks/payments/", clickpesa_webhook),
+    path("webhooks/payments/", payment_webhook),
 ]
 
 urlpatterns += router.urls

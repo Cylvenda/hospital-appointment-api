@@ -247,7 +247,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("You can only pay your own appointment")
 
         payment = appointment.payment
-        if payment.status == Payment.Status.COMPLETED:
+        if payment.status == Payment.Status.SUCCESS:
             return Response({"message": "Already paid"})
 
         response = initiate_payment(payment, user, appointment, preffered_phone_number)
@@ -292,7 +292,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 appointment=appointment
             )
 
-            if payment.status == Payment.Status.COMPLETED:
+            if payment.status == Payment.Status.SUCCESS:
                 return Response(
                     AppointmentSerializer(
                         appointment,
@@ -329,7 +329,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 raise ValidationError(
                     {"payment_method": "Choose a supported payment method."}
                 )
-            payment.status = Payment.Status.COMPLETED
+            payment.status = Payment.Status.SUCCESS
             payment.payment_method = payment_method
             if not payment.transaction_reference:
                 payment.transaction_reference = f"MANUAL-{payment.uuid}"
@@ -565,7 +565,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
         if (
             role in ["receptionist", "admin"]
-            and old.payment.status != Payment.Status.COMPLETED
+            and old.payment.status != Payment.Status.SUCCESS
         ):
             raise PermissionDenied("Cannot process unpaid appointment")
 
@@ -752,8 +752,8 @@ def clickpesa_webhook(request):
         gateway_message = event_data.get("message")
 
         if event in {"PAYMENT RECEIVED", "COMPLETED", "SUCCESS"}:
-            if payment.status != Payment.Status.COMPLETED:
-                payment.status = Payment.Status.COMPLETED
+            if payment.status != Payment.Status.SUCCESS:
+                payment.status = Payment.Status.SUCCESS
                 payment.payment_method = (
                     event_data.get("channel") or payment.payment_method
                 )
@@ -782,7 +782,7 @@ def clickpesa_webhook(request):
             # already confirmed by the gateway or hospital staff.
             if payment.status not in {
                 Payment.Status.FAILED,
-                Payment.Status.COMPLETED,
+                Payment.Status.SUCCESS,
             }:
                 payment.status = Payment.Status.FAILED
                 payment.payment_method = (
