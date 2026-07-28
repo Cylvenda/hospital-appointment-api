@@ -175,6 +175,7 @@ elif DATABASE_URL:
         )
     }
 else:
+    db_sslmode = os.environ.get("DB_SSLMODE", "").strip()
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
@@ -183,6 +184,9 @@ else:
             "PASSWORD": read_secret("DB_PASSWORD_FILE") or os.environ.get("DB_PASSWORD", ""),
             "HOST": os.environ.get("DB_HOST", "db"),
             "PORT": os.environ.get("DB_PORT", "5432"),
+            "OPTIONS": {"sslmode": db_sslmode} if db_sslmode else {},
+            "CONN_MAX_AGE": 600,
+            "CONN_HEALTH_CHECKS": True,
         }
     }
 
