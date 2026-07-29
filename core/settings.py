@@ -35,6 +35,16 @@ def env_bool(name, default=False):
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def env_int(name, default=0):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer.") from exc
+
+
 load_env_file(BASE_DIR / ".env")
 
 # SECURITY WARNING: keep the secret key used in production secret!
@@ -158,6 +168,7 @@ WSGI_APPLICATION = "core.wsgi.application"
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 USE_SQLITE = env_bool("USE_SQLITE", default=not bool(DATABASE_URL))
+DB_CONN_MAX_AGE = max(0, env_int("DB_CONN_MAX_AGE", default=0))
 
 if USE_SQLITE:
     DATABASES = {
@@ -170,7 +181,7 @@ elif DATABASE_URL:
     DATABASES = {
         "default": dj_database_url.parse(
             DATABASE_URL,
-            conn_max_age=600,
+            conn_max_age=DB_CONN_MAX_AGE,
             conn_health_checks=True,
         )
     }
@@ -185,7 +196,7 @@ else:
             "HOST": os.environ.get("DB_HOST", "db"),
             "PORT": os.environ.get("DB_PORT", "5432"),
             "OPTIONS": {"sslmode": db_sslmode} if db_sslmode else {},
-            "CONN_MAX_AGE": 600,
+            "CONN_MAX_AGE": DB_CONN_MAX_AGE,
             "CONN_HEALTH_CHECKS": True,
         }
     }

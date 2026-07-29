@@ -76,7 +76,12 @@ Also set:
 
 ```env
 USE_SQLITE=False
+DB_CONN_MAX_AGE=0
 ```
+
+`DB_CONN_MAX_AGE=0` is important when using Supabase's session pooler. It
+closes each Django database connection at the end of the request instead of
+holding scarce session-pooler clients open.
 
 The application prefers `DATABASE_URL`. Separate `DB_HOST`, `DB_PORT`,
 `DB_NAME`, `DB_USER`, `DB_PASSWORD`, and `DB_SSLMODE=require` variables are
