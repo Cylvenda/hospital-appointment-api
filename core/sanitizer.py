@@ -12,9 +12,6 @@ ALLOWED_ATTRIBUTES = {
     "div": ["class"],
 }
 
-ALLOWED_STYLES = []
-
-
 def sanitize_html(content: str) -> str:
     if not content:
         return content
@@ -22,6 +19,5 @@ def sanitize_html(content: str) -> str:
         content,
         tags=ALLOWED_TAGS,
         attributes=ALLOWED_ATTRIBUTES,
-        styles=ALLOWED_STYLES,
         strip=True,
     )

@@ -373,9 +373,9 @@ class DoctorScheduleAndQueueTests(APITestCase):
         appointment.refresh_from_db()
         payment.refresh_from_db()
         self.assertEqual(appointment.status, Appointment.Status.CONFIRMED)
-        self.assertEqual(payment.status, payment.Status.COMPLETED)
+        self.assertEqual(payment.status, payment.Status.SUCCESS)
         self.assertEqual(payment.payment_method, "cash")
-        self.assertEqual(response.data["payment_status"], "completed")
+        self.assertEqual(response.data["payment_status"], "success")
 
     def test_admin_can_mark_pending_appointment_as_paid(self):
         admin = get_user_model().objects.create_user(
